@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=../../schema/local.json
+binds:
+- port: 3000
+  listeners:
+  - routes:
+    - policies:
+        cors:
+          allowOrigins:
+            - "*"
+          allowHeaders:
+            - "*"
+        # Mark this route as a2a traffic
+        a2a: {}
+      backends:
+      - host: localhost:5000
+- port: 3001
+  listeners:
+  - routes:
+    - policies:
+        cors:
+          allowOrigins:
+            - "*"
+          allowHeaders:
+            - mcp-protocol-version
+            - content-type
+            - cache-control
+      backends:
+      - mcp:
+          targets:
+          - name: product-catalog
+            sse:
+              host: http://localhost:5001/mcp/sse
+- port: 3002
+  listeners:
+  - routes:
+    - policies:
+        cors:
+          allowOrigins:
+            - "*"
+          allowHeaders:
+            - "*"
+        # Mark this route as a2a traffic
+        a2a: {}
+      backends:
+      - host: localhost:5002
+- port: 3005
+  listeners:
+  - routes:
+    - backends:
+      - ai:
+          name: gemini
+          provider:
+            gemini:
+              # Optional; overrides the model in requests
+              model: gemini-1.5-flash
+      policies:
+        backendAuth:
+          key: "$GEMINI_API_KEY"

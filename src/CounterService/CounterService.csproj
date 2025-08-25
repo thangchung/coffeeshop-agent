@@ -10,6 +10,8 @@
     <PackageReference Include="A2A.AspNetCore" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Microsoft.Identity.Web" />
+    <PackageReference Include="Microsoft.SemanticKernel.Agents.A2A" />
+    <PackageReference Include="Microsoft.SemanticKernel.Agents.Core" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
   </ItemGroup>
 

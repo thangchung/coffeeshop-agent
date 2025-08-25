@@ -1,0 +1,24 @@
+# For more info on HTTP files go to https://aka.ms/vs/httpfile
+
+POST http://localhost:3000/submit-order
+Content-Type: application/json
+
+{
+    "id": "1",
+    "jsonrpc": "2.0",
+    "method": "message/send",
+    "params": {
+       "message": {
+            "messageId": "abc-def",
+            "role": "user",
+            "parts": [
+                {
+                    "kind": "text",
+                    "text": "ping"
+                }
+            ]
+        }
+    }
+}
+
+###
