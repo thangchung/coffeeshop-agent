@@ -2,10 +2,14 @@ using System.Diagnostics;
 using System.Text.Json;
 using A2A;
 using CounterService.Models;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Agents;
+using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace CounterService.Agents;
 
 public class CounterAgent(
+    Kernel kernel,
     IConfiguration configuration,
     IHttpClientFactory httpClientFactory,
     IHttpContextAccessor httpContextAccessor,
@@ -15,11 +19,12 @@ public class CounterAgent(
     public static readonly ActivitySource ActivitySource = new($"A2A.{nameof(CounterAgent)}", "1.0.0");
 
     public ILogger<CounterAgent> Logger { get; } = logger;
+    public Kernel Kernel { get; } = kernel;
     public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory;
     public IHttpContextAccessor HttpContextAccessor { get; } = httpContextAccessor;
-    public IList<string> DownStreamAgentEndpoints { get; set; } = [
-            configuration["BaristaService:Url"] ?? "http://localhost:5002"/*,
-            configuration["KitchenService:Url"] ?? "http://localhost:5003"*/];
+    public Dictionary<string, string> DownStreamAgentEndpoints { get; set; } = new Dictionary<string, string> {
+            { configuration["BaristaService:Key"] ?? "BARISTA", configuration["BaristaService:Url"] ?? "http://localhost:5002" }
+    };
     public Dictionary<string, A2AClient> A2AClients { get; set; } = [];
 
     public void Attach(ITaskManager taskManager)
@@ -35,7 +40,7 @@ public class CounterAgent(
         using var activity = ActivitySource.StartActivity("OnTaskCreated", ActivityKind.Server);
         activity?.SetTag("task.id", task.Id);
 
-        foreach (var endpoint in DownStreamAgentEndpoints)
+        foreach (var (key, endpoint) in DownStreamAgentEndpoints)
         {
             Logger.LogDebug("Configured downstream agent endpoint: {Endpoint}", endpoint);
 
@@ -48,8 +53,8 @@ public class CounterAgent(
             var client = new A2AClient(new Uri(agentCard.Url), httpClient);
             Logger.LogDebug("Created A2A client for endpoint: {Endpoint}", $"{agentCard.Url}");
 
-            if(!A2AClients.ContainsKey(endpoint))
-                A2AClients.Add(endpoint, client);
+            if(!A2AClients.ContainsKey(key))
+                A2AClients.Add(key, client);
         }
 
         Logger.LogInformation("Task created with ID: {TaskId}", task.Id);
@@ -130,7 +135,8 @@ public class CounterAgent(
             // Send message via A2A protocol to Pong Service
             Logger.LogInformation("Sending A2A message to Pong Service for user: {UserEmail}", "todo@todo.com");
             // var a2aResponse = await A2AClientService.SendMessageAsync(messageText, "todo: no jwt token", "todo@todo.com");
-            var a2aClient = SmartAgentRouting(messageText);
+
+            var a2aClient = await SmartAgentRouting(Kernel, messageText, cancellationToken);
 
             // Create A2A message with minimal metadata (authentication is in HTTP headers now)
             var a2aMessage = new Message
@@ -309,9 +315,43 @@ public class CounterAgent(
         }
     }
 
-    private A2AClient SmartAgentRouting(string message)
+    private async Task<A2AClient> SmartAgentRouting(Kernel kernel, string messageText, CancellationToken cancellationToken)
     {
-        //todo: use AI Agent to routing based on the message
-        return A2AClients.FirstOrDefault().Value;
+        string promptChunked = """
+                Classify the input message as BARISTA, or KITCHEN.
+                Review: If the message is related to ordering, beverages, or counter service, classify it as BARISTA.
+                If the message is related to food preparation, cooking, or kitchen service, classify it as KITCHEN.
+                Otherwise, classify it as UNKNOWN.
+                Respond with only the classification label: BARISTA, KITCHEN, or UNKNOWN.
+                """;
+
+        ChatCompletionAgent summaryAgent =
+            new()
+            {
+                Name = "ClassificationAgent",
+                Instructions = promptChunked,
+                Kernel = kernel
+            };
+
+        var message = new ChatMessageContent(AuthorRole.User, messageText);
+        var messageClassified = string.Empty;
+
+        await foreach (var msg in summaryAgent.InvokeAsync(message, cancellationToken: cancellationToken))
+        {
+            messageClassified += msg.Message?.Content ?? "UNKNOWN";
+        }
+
+        switch (messageClassified.Trim().ToUpperInvariant())
+        {
+            case "BARISTA":
+                Logger.LogInformation("Routing to Barista Service based on message classification");
+                return A2AClients["BARISTA"];
+            case "KITCHEN":
+                Logger.LogInformation("Routing to Kitchen Service based on message classification");
+                return A2AClients["KITCHEN"];
+            default:
+                Logger.LogWarning("Message classification UNKNOWN, defaulting to first available A2A client");
+                throw new Exception("Cannot route to correct agents.");
+        }
     }
 }

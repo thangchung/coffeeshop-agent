@@ -1,6 +1,6 @@
 # For more info on HTTP files go to https://aka.ms/vs/httpfile
 
-POST http://localhost:3000/submit-order
+POST http://localhost:5000/submit-order
 Content-Type: application/json
 
 {
@@ -14,7 +14,7 @@ Content-Type: application/json
             "parts": [
                 {
                     "kind": "text",
-                    "text": "ping"
+                    "text": "I want to order a black coffee."
                 }
             ]
         }
