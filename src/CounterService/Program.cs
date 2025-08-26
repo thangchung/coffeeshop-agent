@@ -1,6 +1,7 @@
 using A2A;
 using A2A.AspNetCore;
 using CounterService.Agents;
+using ServiceDefaults.Extensions;
 using Microsoft.SemanticKernel;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,16 +26,30 @@ if (string.IsNullOrEmpty(apiKey))
     throw new ArgumentNullException(nameof(apiKey), "The apiKey connection string cannot be null or empty.");
 }
 
-// Register TaskManager as singleton
+// Add agent services following SOLID principles
+builder.Services.AddCounterAgentServices();
+
+// Register TaskManager as singleton with dependency injection
 builder.Services.AddSingleton<ITaskManager>(provider =>
 {
     var taskManager = new TaskManager();
-    var config = provider.GetRequiredService<IConfiguration>();
-    var clientFactory = provider.GetRequiredService<IHttpClientFactory>();
     var logger = provider.GetRequiredService<ILogger<CounterAgent>>();
-    var httpContextAccessor = provider.GetRequiredService<IHttpContextAccessor>();
-    var kernel = provider.GetRequiredService<Kernel>();
-    var agent = new CounterAgent(kernel, config, clientFactory, httpContextAccessor, logger);
+    
+    // Use dependency injection to create the CounterAgent with all required services
+    var configService = provider.GetRequiredService<ServiceDefaults.Configuration.IAgentConfigurationService>();
+    var clientManager = provider.GetRequiredService<ServiceDefaults.Services.IA2AClientManager>();
+    var validationService = provider.GetRequiredService<ServiceDefaults.Services.IInputValidationService>();
+    var orderParsingService = provider.GetRequiredService<ServiceDefaults.Services.IOrderParsingService>();
+    var messageService = provider.GetRequiredService<ServiceDefaults.Services.IA2AMessageService>();
+    
+    var agent = new CounterAgent(
+        configService,
+        clientManager,
+        validationService,
+        orderParsingService,
+        messageService,
+        logger);
+        
     agent.Attach(taskManager);
     return taskManager;
 });

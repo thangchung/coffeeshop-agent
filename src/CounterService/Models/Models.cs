@@ -1,29 +1,10 @@
-namespace CounterService.Models;
+// This file now uses models from ServiceDefaults.Models
+// The models have been moved to ServiceDefaults for better reusability and to follow DRY principles
 
-public class A2AServiceResponse
-{
-    public bool Success { get; set; }
-    public string Message { get; set; } = string.Empty;
-    public object? Data { get; set; }
-    public string? Error { get; set; }
-    public A2AResponseData A2AResponse { get; set; } = new();
-    public McpResponseData McpResponse { get; set; } = new();
-}
+using ServiceDefaults.Models;
 
-public class A2AResponseData
+namespace CounterService.Models
 {
-    public bool Success { get; set; }
-    public string Message { get; set; } = string.Empty;
-    public string? Protocol { get; set; }
-    public DateTime Timestamp { get; set; }
-}
-
-public class McpResponseData
-{
-    public bool Success { get; set; }
-    public bool ToolExecuted { get; set; }
-    public bool AdminAccess { get; set; }
-    public string? ErrorMessage { get; set; }
-    public string? ResponseContent { get; set; }
-    public DateTime Timestamp { get; set; }
+    // Re-export the models from ServiceDefaults for backward compatibility
+    // This ensures existing code doesn't break while centralizing the models
 }
