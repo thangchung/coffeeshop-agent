@@ -1,28 +1,26 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <NoWarn>$(NoWarn);VSTHRD111;CA2007;CA1054;SKEXP0001;SKEXP0010;SKEXP0110</NoWarn>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <NoWarn>$(NoWarn);VSTHRD111;CA2007;CA1054;SKEXP0001;SKEXP0010;SKEXP0110</NoWarn>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="A2A.AspNetCore" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
-    <PackageReference Include="Microsoft.Identity.Web" />
-    <PackageReference Include="Microsoft.SemanticKernel.Agents.A2A" />
-    <PackageReference Include="Microsoft.SemanticKernel.Agents.Core" />
-    <PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.SemanticKernel.Connectors.Ollama" />
+        <PackageReference Include="ModelContextProtocol" />
+        <PackageReference Include="A2A.AspNetCore" />
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+        <PackageReference Include="Microsoft.Identity.Web" />
+        <PackageReference Include="Microsoft.SemanticKernel.Agents.A2A" />
+        <PackageReference Include="Microsoft.SemanticKernel.Agents.Core" />
+        <PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" />
+        <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Agents\" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
+    </ItemGroup>
 
 </Project>

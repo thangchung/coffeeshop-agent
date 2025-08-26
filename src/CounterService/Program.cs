@@ -41,8 +41,27 @@ builder.Services.AddSingleton<ITaskManager>(provider =>
 
 builder.Services.AddHttpContextAccessor();
 
-builder.Services.AddKernel()
+var uri = new Uri("http://localhost:11434");
+var httpClient = new HttpClient
+{
+    BaseAddress = uri
+};
+var kernelBuilder = builder.Services.AddKernel()
+    // .AddOllamaChatCompletion("llama3.2", httpClient);
+    //.AddOpenAIChatCompletion(
+    //    modelId: "openai/gpt-5-nano",
+    //    apiKey: apiKey,
+    //    endpoint: new Uri("https://models.github.ai/inference"));
     .AddAzureOpenAIChatCompletion(chatModelId, endpoint, apiKey);
+
+kernelBuilder.Services.ConfigureHttpClientDefaults(c =>
+{
+    c.AddStandardResilienceHandler();
+    c.ConfigureHttpClient((sp, httpClient) =>
+    {
+        httpClient.Timeout = TimeSpan.FromMinutes(5); // Set timeout to 5 minutes
+    });
+});
 
 builder.AddServiceDefaults();
 

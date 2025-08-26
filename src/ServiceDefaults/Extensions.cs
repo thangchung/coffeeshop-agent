@@ -64,6 +64,7 @@ namespace Microsoft.Extensions.Hosting
                     tracing.AddSource(builder.Environment.ApplicationName)
                         .AddSource("A2A.CounterAgent")
                         .AddSource("A2A.BaristaAgent")
+                        .AddSource("A2A.KitchenAgent")
                         .AddAspNetCoreInstrumentation(tracing =>
                             // Exclude health check requests from tracing
                             tracing.Filter = context =>

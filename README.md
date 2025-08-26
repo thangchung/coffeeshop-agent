@@ -23,6 +23,7 @@ http://localhost:5000/.well-known/agent.json
 
 ## TODO
 
+- [ ] Semantic Caching with Semantic Kernel: https://share.google/aimode/gxqpWpfekktrOidbr
 - [ ] Microsoft.Extensions.AI + Ollama: https://learn.microsoft.com/en-us/dotnet/ai/microsoft-extensions-ai#tool-calling
 
 ## References

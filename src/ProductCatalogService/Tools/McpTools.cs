@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Server;
+using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
 
@@ -22,22 +22,28 @@ public enum ItemType
     CHICKEN_MEATBALLS,
 }
 
-public record ItemTypeDto(ItemType ItemType, string Name);
+public record ItemTypeDto(ItemType ItemType, string Name, float Price);
 
 [McpServerToolType]
 public sealed class McpTools
 {
+    private List<ItemTypeDto> itemTypeDtos = Enum.GetValues<ItemType>()
+            .Select(itemType => new ItemTypeDto(itemType, itemType.ToString().Replace('_', ' '), 3.5f))
+            .ToList();
+
     [McpServerTool, Description("Get item types.")]
     public string GetItemType()
     {
-        var response = Enum.GetValues<ItemType>()
-            .Select(itemType => new ItemTypeDto(itemType, itemType.ToString().Replace('_', ' ')))
-            .ToList();
-
-        return JsonSerializer.Serialize(response, new JsonSerializerOptions
+        return JsonSerializer.Serialize(itemTypeDtos, new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             WriteIndented = true
         });
+    }
+
+    [McpServerTool, Description("Get item price based on the item type.")]
+    public string GetItemPrice(ItemType itemType)
+    {
+        return itemTypeDtos.FirstOrDefault(i => i.ItemType == itemType)?.Price.ToString() ?? "0.0";
     }
 }
