@@ -17,6 +17,12 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+    <PackageReference Include="A2A.AspNetCore" />
+    <PackageReference Include="Microsoft.SemanticKernel" />
+    <PackageReference Include="Microsoft.SemanticKernel.Agents.Core" />
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.Ollama" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 
 </Project>

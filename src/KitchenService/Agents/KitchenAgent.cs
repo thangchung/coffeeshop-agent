@@ -2,20 +2,20 @@ using ServiceDefaults;
 using ServiceDefaults.Agents;
 using Microsoft.Extensions.Logging;
 
-namespace BaristaService.Agents;
+namespace KitchenService.Agents;
 
 /// <summary>
-/// Barista agent implementation using the common SimpleAgent base class.
+/// Kitchen agent implementation using the common SimpleAgent base class.
 /// This eliminates code duplication and follows DRY principles.
 /// Reference: Clean Code by Robert Martin - Chapter 17: Smells and Heuristics (G5: Duplication)
 /// </summary>
-public class BaristaAgent : SimpleAgent
+public class KitchenAgent : SimpleAgent
 {
-    public BaristaAgent(IHttpContextAccessor httpContextAccessor, ILogger<BaristaAgent> logger)
+    public KitchenAgent(IHttpContextAccessor httpContextAccessor, ILogger<KitchenAgent> logger)
         : base(
             logger,
-            AgentConstants.ActivitySources.Barista,
-            "Barista Service Agent",
+            AgentConstants.ActivitySources.Kitchen,
+            "Kitchen Service Agent",
             "A2A server agent that processes messages and integrates with MCP server for admin users.")
     {
         // Store httpContextAccessor if needed for future use
