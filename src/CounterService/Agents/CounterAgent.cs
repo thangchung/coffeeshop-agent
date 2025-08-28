@@ -334,11 +334,13 @@ public class CounterAgent(
                     {
                         "name": "black coffee",
                         "itemType": "COFFEE_BLACK",
+                        "quantity": 1,
                         "price": 3
                     },
                     {
                         "name": "cappuccino",
                         "itemType": "CAPPUCCINO",
+                        "quantity": 1,
                         "price": 3.5
                     }
                 ],
@@ -346,6 +348,7 @@ public class CounterAgent(
                     {
                         "name": "cake pop",
                         "itemType": "CAKEPOP",
+                        "quantity": 2,
                         "price": 5
                     }
                 ]
@@ -380,6 +383,7 @@ public class CounterAgent(
             Parse a customer's message into a order object in valid JSON.
             Use your tool to extract the name, price, and item type of the customer's message.
             Use your tool to query and get the valid price of the item.
+            The quantity of each item need keeping (if no quantity inputs from user, then auto-set to 1).
             Use the provided JSON schema for your reply (no markdown for formatting the JSON object needed):
             {{schema}}
 
@@ -392,11 +396,13 @@ public class CounterAgent(
                     {
                         "name": "black coffee",
                         "itemType": "BLACK_COFFEE",
+                        "quantity": 1,
                         "price": 3
                     },
                     {
                         "name": "cappuccino",
                         "itemType": "CAPPUCCINO",
+                        "quantity": 1,
                         "price": 3.5
                     }
                 ],
@@ -404,18 +410,20 @@ public class CounterAgent(
             }
 
             EXAMPLE 2:
-            Customer's message: I want a black coffee, cappuccino and a cakepop.
+            Customer's message: I want a black coffee, 2 cappuccino and 2 cakepops.
             JSON Response:
             {
                 "baristaItems": [
                     {
                         "name": "black coffee",
                         "itemType": "BLACK_COFFEE",
+                        "quantity": 1,
                         "price": 3
                     },
                     {
                         "name": "cappuccino",
                         "itemType": "CAPPUCCINO",
+                        "quantity": 2,
                         "price": 3.5
                     }
                 ],
@@ -423,6 +431,7 @@ public class CounterAgent(
                     {
                         "name": "cakepop",
                         "itemType": "CAKEPOP",
+                        "quantity": 2,
                         "price": 5
                     }
                 ]
@@ -437,6 +446,7 @@ public class CounterAgent(
                     {
                         "name": "croissant chocolate",
                         "itemType": "CROISSANT_CHOCOLATE",
+                        "quantity": 1,
                         "price": 5.5
                     }
                 ]
@@ -521,6 +531,7 @@ public class CounterAgent(
         public ItemType ItemType { get; set; }
 
         public string Name { get; set; } = string.Empty;
+        public int Quantity { get; set; } = 1;
         public float Price { get; set; }
     }
 

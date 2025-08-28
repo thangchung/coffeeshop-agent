@@ -14,7 +14,7 @@ Content-Type: application/json
             "parts": [
                 {
                     "kind": "text",
-                    "text": "I want a black coffee, cappuccino and a cake pop."
+                    "text": "I want a black coffee, cappuccino and 2 cake pops."
                 }
             ]
         }
