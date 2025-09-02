@@ -15,12 +15,9 @@ public class KitchenAgent : SimpleAgent
         : base(
             logger,
             AgentConstants.ActivitySources.Kitchen,
+            httpContextAccessor,
             "Kitchen Service Agent",
             "A2A server agent that processes messages and integrates with MCP server for admin users.")
     {
-        // Store httpContextAccessor if needed for future use
-        HttpContextAccessor = httpContextAccessor;
     }
-
-    public IHttpContextAccessor HttpContextAccessor { get; }
 }
