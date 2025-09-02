@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Schema;
 using System.Text.Json.Serialization;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
@@ -130,17 +129,43 @@ public class OrderParsingService : IOrderParsingService
         }, httpClient, ownsHttpClient: true);
 
         // Create MCP client using the official factory
-        using var mcpClient = await McpClientFactory.CreateAsync(transport, cancellationToken: cancellationToken);
+        await using var mcpClient = await McpClientFactory.CreateAsync(transport, cancellationToken: cancellationToken);
         var tools = await mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
 
-        var options = JsonSerializerOptions.Default;
-        var exporterOptions = new JsonSchemaExporterOptions()
+        // Use a simple JSON schema description instead of the newer API
+        var schemaDescription = """
         {
-            TreatNullObliviousAsNonNullable = true,
-        };
-        var schema = options.GetJsonSchemaAsNode(typeof(OrderDto), exporterOptions);
+            "type": "object",
+            "properties": {
+                "baristaItems": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "itemType": {"type": "string"},
+                            "quantity": {"type": "number"},
+                            "price": {"type": "number"}
+                        }
+                    }
+                },
+                "kitchenItems": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "itemType": {"type": "string"},
+                            "quantity": {"type": "number"},
+                            "price": {"type": "number"}
+                        }
+                    }
+                }
+            }
+        }
+        """;
         
-        var prompt = CreateOrderParsingPrompt(schema?.ToString() ?? "");
+        var prompt = CreateOrderParsingPrompt(schemaDescription);
 
         if (!_kernel.Plugins.Contains("Tools"))
         {

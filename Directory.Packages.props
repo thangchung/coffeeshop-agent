@@ -24,7 +24,7 @@
     <PackageVersion Include="ModelContextProtocol" Version="0.3.0-preview.4" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.3.0-preview.4" />
     <PackageVersion Include="Microsoft.SemanticKernel" Version="1.63.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.6" />
     
     <!-- Testing packages -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.0-preview.7.25380.15" />

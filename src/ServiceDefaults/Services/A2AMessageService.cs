@@ -146,6 +146,11 @@ public class A2AMessageService : IA2AMessageService
         var a2aResponse = await client.SendMessageAsync(messageSendParams);
         activity?.SetTag("response.type", a2aResponse?.GetType().Name ?? "null");
 
+        if (a2aResponse == null)
+        {
+            throw new InvalidOperationException("Received null response from A2A client");
+        }
+
         return _responseMapper.MapResponse(a2aResponse);
     }
 

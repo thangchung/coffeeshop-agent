@@ -31,8 +31,6 @@ builder.Services.AddAuthorization(options =>
     });
 });
 
-var builder = WebApplication.CreateBuilder(args);
-
 builder.Services.AddHttpContextAccessor();
 
 // Register TaskManager as singleton
