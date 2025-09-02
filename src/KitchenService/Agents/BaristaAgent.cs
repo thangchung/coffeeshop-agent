@@ -47,6 +47,21 @@ public class KitchenAgent(IHttpContextAccessor httpContextAccessor, ILogger<Kitc
             throw new InvalidOperationException("TaskManager is not attached.");
         }
 
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext?.User?.Identity?.IsAuthenticated != true)
+        {
+            await _taskManager.UpdateStatusAsync(
+                task.Id,
+                TaskState.AuthRequired,
+                new Message
+                {
+                    Parts = [new TextPart { Text = "User is not authenticated" }]
+                },
+                final: true,
+                cancellationToken: cancellationToken);
+            return;
+        }
+
         try
         {
             // Complete the task

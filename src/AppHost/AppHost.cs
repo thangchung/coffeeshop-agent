@@ -4,15 +4,30 @@ var chatModelId = builder.AddConnectionString("chatModelId");
 var endpoint = builder.AddConnectionString("endpoint");
 var apiKey = builder.AddConnectionString("apiKey");
 
-builder.AddProject<Projects.ProductCatalogService>("product-catalog");
+var product = builder.AddProject<Projects.ProductCatalogService>("product")
+    .WithEnvironment("AzureAd__Instance", builder.Configuration["AzureAd:Instance"])
+    .WithEnvironment("AzureAd__TenantId", builder.Configuration["AzureAd:TenantId"])
+    .WithEnvironment("AzureAd__ClientId", builder.Configuration["AzureAd:ClientId"]);
 
-var counter = builder.AddProject<Projects.CounterService>("counter");
+var barista = builder.AddProject<Projects.BaristaService>("barista")
+    .WithEnvironment("AzureAd__Instance", builder.Configuration["AzureAd:Instance"])
+    .WithEnvironment("AzureAd__TenantId", builder.Configuration["AzureAd:TenantId"])
+    .WithEnvironment("AzureAd__ClientId", builder.Configuration["AzureAd:ClientId"]);
+
+var kitchen = builder.AddProject<Projects.KitchenService>("kitchen")
+    .WithEnvironment("AzureAd__Instance", builder.Configuration["AzureAd:Instance"])
+    .WithEnvironment("AzureAd__TenantId", builder.Configuration["AzureAd:TenantId"])
+    .WithEnvironment("AzureAd__ClientId", builder.Configuration["AzureAd:ClientId"]);
+
+var counter = builder.AddProject<Projects.CounterService>("counter")
+    .WithEnvironment("AzureAd__Instance", builder.Configuration["AzureAd:Instance"])
+    .WithEnvironment("AzureAd__TenantId", builder.Configuration["AzureAd:TenantId"])
+    .WithEnvironment("AzureAd__ClientId", builder.Configuration["AzureAd:ClientId"])
+    .WithReference(product).WaitFor(product)
+    .WithReference(barista).WaitFor(barista)
+    .WithReference(kitchen).WaitFor(kitchen);
 counter.WithReference(chatModelId);
 counter.WithReference(endpoint);
 counter.WithReference(apiKey);
-
-builder.AddProject<Projects.BaristaService>("barista");
-
-builder.AddProject<Projects.KitchenService>("kitchen");
 
 builder.Build().Run();

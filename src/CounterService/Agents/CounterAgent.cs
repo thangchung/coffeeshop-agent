@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Authentication;
 using System.Text.Json;
 using System.Text.Json.Schema;
 using System.Text.Json.Serialization;
@@ -26,11 +27,13 @@ public class CounterAgent(
     public IConfiguration Configuration { get; } = configuration;
     public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory;
     public IHttpContextAccessor HttpContextAccessor { get; } = httpContextAccessor;
-    public Dictionary<string, string> DownStreamAgentEndpoints { get; set; } = new Dictionary<string, string> {
-            { configuration["BaristaService:Key"] ?? "BARISTA", configuration["BaristaService:Url"] ?? "http://localhost:5002" },
-            { configuration["KitchenService:Key"] ?? "KITCHEN", configuration["KitchenService:Url"] ?? "http://localhost:5003" }
+    public Dictionary<string, string> DownStreamAgentEndpoints { get; set; }
+        = new Dictionary<string, string> {
+            { "BARISTA", "https+http://barista" },
+            { "KITCHEN", "https+http://kitchen" }
     };
     public Dictionary<string, A2AClient> A2AClients { get; set; } = [];
+    public string JwtToken { get; set; } = string.Empty;
 
     public void Attach(ITaskManager taskManager)
     {
@@ -45,14 +48,61 @@ public class CounterAgent(
         using var activity = ActivitySource.StartActivity("OnTaskCreated", ActivityKind.Server);
         activity?.SetTag("task.id", task.Id);
 
+        if (_taskManager == null)
+        {
+            throw new InvalidOperationException("TaskManager is not attached.");
+        }
+
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext?.User?.Identity?.IsAuthenticated != true)
+        {
+            await _taskManager.UpdateStatusAsync(
+                task.Id,
+                TaskState.Failed,
+                new Message
+                {
+                    Parts = [new TextPart { Text = "User is not authenticated" }]
+                },
+                final: true,
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        var authHeader = httpContext.Request.Headers["Authorization"].FirstOrDefault();
+        if (authHeader != null && authHeader.StartsWith("Bearer "))
+        {
+            JwtToken = authHeader.Substring("Bearer ".Length).Trim();
+        }
+
+        var userEmail = httpContext.User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value;
+
+        if (string.IsNullOrEmpty(JwtToken) || string.IsNullOrEmpty(userEmail))
+        {
+            await _taskManager.UpdateStatusAsync(
+                task.Id,
+                TaskState.AuthRequired,
+                new Message
+                {
+                    Parts = [new TextPart { Text = $"Missing authentication information - JWT token: {(JwtToken != null ? "present" : "missing")}, User email: {(userEmail != null ? "present" : "missing")}" }]
+                },
+                final: true,
+                cancellationToken: cancellationToken);
+            return;
+        }
+
         foreach (var (key, endpoint) in DownStreamAgentEndpoints)
         {
             activity?.SetTag($"downstream.{key.ToLower()}.endpoint", endpoint);
             Logger.LogDebug("Configured downstream agent endpoint: {Endpoint}", endpoint);
 
-            var httpClient = HttpClientFactory.CreateClient();
+            // TODO: using OBO flow to get token for downstream service - JwtToken
+            // ref: https://github.com/damienbod/token-mgmt-ui-delegated-obo-entra/blob/main/src/WebApiEntraIdObo/WebApiEntraId/WebApiDownstreamService.cs#L33
 
-            A2ACardResolver cardResolver = new(new Uri(endpoint));
+            var httpClient = HttpClientFactory.CreateClient();
+            httpClient.DefaultRequestHeaders.Clear();
+            httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {JwtToken}");
+
+            A2ACardResolver cardResolver = new(new Uri(endpoint), httpClient: httpClient);
             AgentCard agentCard = await cardResolver.GetAgentCardAsync();
             activity?.SetTag($"downstream.{key.ToLower()}.agentCard.url", agentCard.Url);
             Logger.LogDebug("Resolved Agent card: {Endpoint}", $"{agentCard.Url}");
@@ -72,6 +122,26 @@ public class CounterAgent(
     {
         using var activity = ActivitySource.StartActivity("OnTaskUpdated", ActivityKind.Server);
         activity?.SetTag("task.id", task.Id);
+
+        if (_taskManager == null)
+        {
+            throw new InvalidOperationException("TaskManager is not attached.");
+        }
+
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext?.User?.Identity?.IsAuthenticated != true)
+        {
+            await _taskManager.UpdateStatusAsync(
+                task.Id,
+                TaskState.Failed,
+                new Message
+                {
+                    Parts = [new TextPart { Text = "User is not authenticated" }]
+                },
+                final: true,
+                cancellationToken: cancellationToken);
+            return;
+        }
 
         Logger.LogInformation("Task updated with ID: {TaskId}", task.Id);
         await ProcessTaskAsync(task, cancellationToken);
@@ -126,9 +196,6 @@ public class CounterAgent(
                 return;
             }
 
-            // todo: process authn and authz info
-            // ...
-
             // Update task status to Working
             await _taskManager.UpdateStatusAsync(
                 task.Id,
@@ -142,7 +209,7 @@ public class CounterAgent(
             // Send message via A2A protocol to Pong Service
             Logger.LogInformation("Sending A2A message to Pong Service for user: {UserEmail}", "todo@todo.com");
 
-            var a2aClients = await ParseInputMessage(Kernel, messageText, isStub: true, cancellationToken: cancellationToken);
+            var a2aClients = await ParseInputMessage(Kernel, messageText, isStub: false, cancellationToken: cancellationToken);
             activity?.SetTag("a2a.clients.count", a2aClients.Count);
 
             Logger.LogInformation("Sending A2A message with authentication in HTTP headers");
@@ -186,7 +253,7 @@ public class CounterAgent(
                     // Try to extract the actual response from the task
                     if (response.Data.GetType().GetProperty("Response")?.GetValue(response.Data) is string taskResponse)
                     {
-                        responseText = $"Success! Pong Service responded: {taskResponse}";
+                        responseText = $"Success! {a2aClient.GetType().FullName} responded: {taskResponse}";
                     }
                     else
                     {
@@ -214,7 +281,7 @@ public class CounterAgent(
                 TaskState.Completed,
                 new Message
                 {
-                    Parts = [new TextPart { Text = "Ping message sent successfully via A2A protocol" }]
+                    Parts = [new TextPart { Text = "The message sent successfully via A2A protocol" }]
                 },
                 final: true,
                 cancellationToken: cancellationToken);
@@ -230,7 +297,7 @@ public class CounterAgent(
                 TaskState.Failed,
                 new Message
                 {
-                    Parts = [new TextPart { Text = $"Error processing ping message: {ex.Message}" }]
+                    Parts = [new TextPart { Text = $"Error processing the message: {ex.Message}" }]
                 },
                 final: true,
                 cancellationToken: cancellationToken);
@@ -281,17 +348,24 @@ public class CounterAgent(
                     Logger.LogInformation("A2A task created successfully with ID: {TaskId}, Status: {TaskStatus}",
                                     task.Id, task.Status.State.ToString());
 
-                    return new A2AServiceResponse
+                    if (task.Status.State == TaskState.AuthRequired)
                     {
-                        Success = true,
-                        Message = "A2A task created successfully",
-                        Data = new
+                        throw new AuthenticationException(task.Status.Message?.Parts[0]?.AsTextPart()?.Text ?? "error");
+                    }
+                    else
+                    {
+                        return new A2AServiceResponse
                         {
-                            TaskId = task.Id,
-                            Status = task.Status.State.ToString(),
-                            Response = task.Artifacts?.FirstOrDefault()?.Parts?.OfType<TextPart>()?.FirstOrDefault()?.Text ?? "Task created"
-                        }
-                    };
+                            Success = true,
+                            Message = "A2A task created successfully",
+                            Data = new
+                            {
+                                TaskId = task.Id,
+                                Status = task.Status.State.ToString(),
+                                Response = task.Artifacts?.FirstOrDefault()?.Parts?.OfType<TextPart>()?.FirstOrDefault()?.Text ?? "Task created"
+                            }
+                        };
+                    }
                 }
             case Message messageResponse:
                 {
@@ -355,18 +429,23 @@ public class CounterAgent(
             }
             """;
 
-        IMcpClient mcpClient = null;
+        IMcpClient? mcpClient = null;
         if (!isStub)
         {
+            // TODO: using OBO flow to get token for downstream service - JwtToken
+            // ref: https://github.com/damienbod/token-mgmt-ui-delegated-obo-entra/blob/main/src/WebApiEntraIdObo/WebApiEntraId/WebApiDownstreamService.cs#L33
+
             // mcp
-            var serverUrl = Configuration["McpServer:Url"] ?? "http://localhost:5001";
-            var clientName = Configuration["McpServer:ClientName"] ?? "product-catalog-service";
+            var httpClient = HttpClientFactory.CreateClient();
+            httpClient.DefaultRequestHeaders.Clear();
+            httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {JwtToken}");
+            httpClient.BaseAddress = new Uri("https+http://product/mcp");
 
             var transport = new SseClientTransport(new()
             {
-                Endpoint = new Uri($"{serverUrl}/mcp"),
-                Name = clientName
-            }, HttpClientFactory.CreateClient());
+                Endpoint = new Uri("http://product/mcp"),// set anything with valid URI, because we override it with our own HttpClient
+                Name = "product-catalog-service"
+            }, httpClient, ownsHttpClient: true);
 
             // Create MCP client using the official factory
             mcpClient = await McpClientFactory.CreateAsync(transport, cancellationToken: cancellationToken);
@@ -380,7 +459,7 @@ public class CounterAgent(
             };
             var schema = options.GetJsonSchemaAsNode(typeof(OrderDto), exporterOptions);
             var promptChunked = $$"""
-            Parse a customer's message into a order object in valid JSON.
+            Parse a customer's message into a order object in valid JSON (in the camel-case format).
             Use your tool to extract the name, price, and item type of the customer's message.
             Use your tool to query and get the valid price of the item.
             The quantity of each item need keeping (if no quantity inputs from user, then auto-set to 1).
@@ -494,12 +573,12 @@ public class CounterAgent(
 
         if (orders?.BaristaItems.Count > 0)
         {
-            selectedClients.Add(A2AClients["BARISTA"], orders?.BaristaItems);
+            selectedClients.Add(A2AClients["BARISTA"], orders?.BaristaItems!);
         }
 
         if (orders?.KitchenItems.Count > 0)
         {
-            selectedClients.Add(A2AClients["KITCHEN"], orders?.KitchenItems);
+            selectedClients.Add(A2AClients["KITCHEN"], orders?.KitchenItems!);
         }
 
         if (mcpClient != null)
