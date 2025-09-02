@@ -37,8 +37,9 @@ public class CounterAgent : BaseAgent
         IInputValidationService validationService,
         IOrderParsingService orderParsingService,
         IA2AMessageService messageService,
+        IHttpContextAccessor httpContextAccessor,
         ILogger<CounterAgent> logger)
-        : base(logger, AgentConstants.ActivitySources.Counter)
+        : base(logger, AgentConstants.ActivitySources.Counter, httpContextAccessor)
     {
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
         _clientManager = clientManager ?? throw new ArgumentNullException(nameof(clientManager));
@@ -48,25 +49,40 @@ public class CounterAgent : BaseAgent
     }
 
     /// <summary>
-    /// Override to initialize A2A clients when task is created
+    /// Override to initialize A2A clients when task is created with authentication
     /// </summary>
     protected override async Task OnTaskCreatedAsync(AgentTask task, CancellationToken cancellationToken)
     {
         using var activity = ActivitySource.StartActivity("OnTaskCreated", ActivityKind.Server);
         activity?.SetTag("task.id", task.Id);
 
-        // Initialize A2A clients for downstream services
-        await _clientManager.InitializeClientsAsync(cancellationToken);
+        // Get authentication information first
+        var authResult = await ValidateAuthenticationAsync(task, cancellationToken);
+        if (!authResult.IsAuthenticated)
+        {
+            return; // Error already handled in ValidateAuthenticationAsync
+        }
+
+        // Initialize A2A clients for downstream services with authentication
+        await _clientManager.InitializeClientsAsync(authResult.JwtToken, cancellationToken);
         
         Logger.LogInformation("Task created with ID: {TaskId}", task.Id);
-        await ProcessTaskAsync(task, cancellationToken);
+        await ProcessTaskCoreAsync(task, cancellationToken);
     }
 
     /// <summary>
     /// Core task processing implementation - much more focused and readable
+    /// Now includes JWT token handling for authenticated service calls
     /// </summary>
     protected override async Task ProcessTaskCoreAsync(AgentTask task, CancellationToken cancellationToken)
     {
+        // Get authentication info again for this call
+        var authResult = await ValidateAuthenticationAsync(task, cancellationToken);
+        if (!authResult.IsAuthenticated)
+        {
+            return; // Error already handled
+        }
+
         // Step 1: Validate input
         var validationResult = _validationService.ValidateTask(task);
         if (!validationResult.IsValid)
@@ -92,9 +108,9 @@ public class CounterAgent : BaseAgent
             },
             cancellationToken: cancellationToken);
 
-        // Step 3: Parse the order from the message
+        // Step 3: Parse the order from the message with authentication
         Logger.LogInformation("Parsing customer order for task {TaskId}", task.Id);
-        var order = await _orderParsingService.ParseOrderAsync(messageText, isStub: true, cancellationToken);
+        var order = await _orderParsingService.ParseOrderAsync(messageText, authResult.JwtToken, isStub: false, cancellationToken);
 
         // Step 4: Send A2A messages to appropriate services
         Logger.LogInformation("Sending A2A messages for {BaristaItems} barista items and {KitchenItems} kitchen items", 

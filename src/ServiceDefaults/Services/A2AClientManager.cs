@@ -8,15 +8,17 @@ namespace ServiceDefaults.Services;
 /// <summary>
 /// Interface for A2A client management operations.
 /// Follows Single Responsibility Principle (SRP) by focusing only on A2A client management.
+/// Now includes support for authenticated HTTP clients with JWT tokens.
 /// Reference: SOLID Principles in C# - https://docs.microsoft.com/en-us/dotnet/architecture/modern-web-apps-azure/architectural-principles#solid
 /// </summary>
 public interface IA2AClientManager
 {
     /// <summary>
-    /// Initializes A2A clients for downstream services
+    /// Initializes A2A clients for downstream services with authentication
     /// </summary>
+    /// <param name="jwtToken">JWT token for authenticated requests</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    Task InitializeClientsAsync(CancellationToken cancellationToken = default);
+    Task InitializeClientsAsync(string? jwtToken = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets A2A clients by their keys
@@ -53,7 +55,7 @@ public class A2AClientManager : IA2AClientManager
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task InitializeClientsAsync(CancellationToken cancellationToken = default)
+    public async Task InitializeClientsAsync(string? jwtToken = null, CancellationToken cancellationToken = default)
     {
         using var activity = _activitySource.StartActivity("InitializeClients");
 
@@ -69,8 +71,17 @@ public class A2AClientManager : IA2AClientManager
 
                 _logger.LogDebug("Initializing A2A client for agent: {AgentKey} at {Endpoint}", key, endpoint);
 
+                // Create authenticated HTTP client with JWT token
                 var httpClient = _httpClientFactory.CreateClient();
-                var cardResolver = new A2ACardResolver(new Uri(endpoint));
+                httpClient.DefaultRequestHeaders.Clear();
+                
+                if (!string.IsNullOrEmpty(jwtToken))
+                {
+                    httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {jwtToken}");
+                    _logger.LogDebug("Added JWT authentication header for agent: {AgentKey}", key);
+                }
+
+                var cardResolver = new A2ACardResolver(new Uri(endpoint), httpClient: httpClient);
                 var agentCard = await cardResolver.GetAgentCardAsync();
                 
                 clientActivity?.SetTag("agent.card.url", agentCard.Url);

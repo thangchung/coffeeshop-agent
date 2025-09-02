@@ -5,6 +5,7 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <NoWarn>$(NoWarn);VSTHRD111;CA2007;CA1054;SKEXP0001;SKEXP0010;SKEXP0110</NoWarn>
+        <UserSecretsId>984978e2-2a71-4c44-8b98-6cbbcfdf71d0</UserSecretsId>
     </PropertyGroup>
 
     <ItemGroup>

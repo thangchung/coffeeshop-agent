@@ -19,6 +19,9 @@ public static class ServiceCollectionExtensions
     /// <returns>The service collection for method chaining</returns>
     public static IServiceCollection AddAgentServices(this IServiceCollection services)
     {
+        // Add HTTP context accessor for authentication
+        services.AddHttpContextAccessor();
+        
         // Configuration services
         services.AddSingleton<IAgentConfigurationService, AgentConfigurationService>();
         

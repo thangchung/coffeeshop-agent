@@ -34,10 +34,32 @@ public static class AgentConstants
     /// </summary>
     public static class Defaults
     {
-        public const string BaristaServiceUrl = "http://localhost:5002";
-        public const string KitchenServiceUrl = "http://localhost:5003";
-        public const string McpServerUrl = "http://localhost:5001";
+        public const string BaristaServiceUrl = "https+http://barista";
+        public const string KitchenServiceUrl = "https+http://kitchen";
+        public const string ProductServiceUrl = "https+http://product";
+        public const string McpServerUrl = "https+http://product/mcp";
         public const string McpServerClientName = "product-catalog-service";
+    }
+
+    /// <summary>
+    /// Azure AD configuration keys for authentication
+    /// </summary>
+    public static class AzureAdKeys
+    {
+        public const string Instance = "AzureAd:Instance";
+        public const string TenantId = "AzureAd:TenantId";
+        public const string ClientId = "AzureAd:ClientId";
+        public const string Scope = "AzureAd:Scope";
+    }
+
+    /// <summary>
+    /// Authentication policy names
+    /// </summary>
+    public static class AuthenticationPolicies
+    {
+        public const string AdminOnly = "AdminOnly";
+        public const string RequiredScope = "http://schemas.microsoft.com/identity/claims/scope";
+        public const string RequiredScopeValue = "admin";
     }
 
     /// <summary>
@@ -50,6 +72,9 @@ public static class AgentConstants
         public const string NoTextContent = "No text content found in message";
         public const string TaskProcessingCancelled = "Task processing cancelled for ID: {0}";
         public const string UnexpectedResponseType = "Unexpected response type from A2A protocol";
+        public const string UserNotAuthenticated = "User is not authenticated";
+        public const string AuthenticationRequired = "Authentication is required. Please provide a valid JWT token.";
+        public const string MissingAuthenticationInfo = "Missing authentication information";
     }
 
     /// <summary>

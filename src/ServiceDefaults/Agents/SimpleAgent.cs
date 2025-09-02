@@ -1,5 +1,6 @@
 using A2A;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Http;
 
 namespace ServiceDefaults.Agents;
 
@@ -19,11 +20,12 @@ public class SimpleAgent : BaseAgent
     public SimpleAgent(
         ILogger logger,
         string activitySourceName,
+        IHttpContextAccessor httpContextAccessor,
         string agentName,
         string agentDescription,
         string skillName = "process_order",
         string skillDescription = "Process messages and communicate with MCP server for admin users. Requires JWT authentication with admin role and 'access_as_user' scope.")
-        : base(logger, activitySourceName)
+        : base(logger, activitySourceName, httpContextAccessor)
     {
         _agentName = agentName;
         _agentDescription = agentDescription;

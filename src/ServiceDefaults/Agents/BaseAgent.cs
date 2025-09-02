@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using A2A;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Http;
 
 namespace ServiceDefaults.Agents;
 
@@ -9,19 +10,26 @@ namespace ServiceDefaults.Agents;
 /// Implements the Template Method Pattern to provide common task processing logic while allowing 
 /// specialized implementations to override specific behavior.
 /// Follows DRY principle by consolidating common agent functionality.
+/// 
+/// Now includes Azure AD authentication integration for secure agent communication.
+/// All agents require Microsoft Entra ID JWT Bearer token authentication with 'access_as_user' scope.
+/// 
 /// Reference: Clean Code by Robert Martin - Chapter 14: Successive Refinement
 /// Reference: Gang of Four Design Patterns - Template Method Pattern
+/// Reference: .NET Security Best Practices - https://docs.microsoft.com/en-us/dotnet/standard/security/
 /// </summary>
 public abstract class BaseAgent : IAgent, ITaskProcessor, IAgentCardProvider
 {
     protected ITaskManager? _taskManager;
     protected readonly ILogger Logger;
     protected readonly ActivitySource ActivitySource;
+    protected readonly IHttpContextAccessor HttpContextAccessor;
 
-    protected BaseAgent(ILogger logger, string activitySourceName)
+    protected BaseAgent(ILogger logger, string activitySourceName, IHttpContextAccessor httpContextAccessor)
     {
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
         ActivitySource = new ActivitySource(activitySourceName, "1.0.0");
+        HttpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
     }
 
     /// <summary>
@@ -61,7 +69,8 @@ public abstract class BaseAgent : IAgent, ITaskProcessor, IAgentCardProvider
 
     /// <summary>
     /// Template method for task processing - provides common error handling and validation
-    /// while delegating specific processing logic to derived classes
+    /// while delegating specific processing logic to derived classes.
+    /// Now includes authentication validation for secure task processing.
     /// </summary>
     public virtual async Task ProcessTaskAsync(AgentTask task, CancellationToken cancellationToken)
     {
@@ -79,6 +88,13 @@ public abstract class BaseAgent : IAgent, ITaskProcessor, IAgentCardProvider
             return;
         }
 
+        // Authentication validation
+        var authValidationResult = await ValidateAuthenticationAsync(task, cancellationToken);
+        if (!authValidationResult.IsAuthenticated)
+        {
+            return; // Error already handled in ValidateAuthenticationAsync
+        }
+
         try
         {
             // Template method: delegate specific processing to derived classes
@@ -90,6 +106,58 @@ public abstract class BaseAgent : IAgent, ITaskProcessor, IAgentCardProvider
         {
             await HandleTaskErrorAsync(task, ex, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Validates authentication for the current request.
+    /// Returns authentication details including JWT token for downstream service calls.
+    /// </summary>
+    protected virtual async Task<AuthenticationResult> ValidateAuthenticationAsync(AgentTask task, CancellationToken cancellationToken)
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext?.User?.Identity?.IsAuthenticated != true)
+        {
+            await _taskManager!.UpdateStatusAsync(
+                task.Id,
+                TaskState.AuthRequired,
+                new Message
+                {
+                    Parts = [new TextPart { Text = AgentConstants.ErrorMessages.UserNotAuthenticated }]
+                },
+                final: true,
+                cancellationToken: cancellationToken);
+            return new AuthenticationResult { IsAuthenticated = false };
+        }
+
+        var authHeader = httpContext.Request.Headers["Authorization"].FirstOrDefault();
+        string? jwtToken = null;
+        if (authHeader != null && authHeader.StartsWith("Bearer "))
+        {
+            jwtToken = authHeader.Substring("Bearer ".Length).Trim();
+        }
+
+        var userEmail = httpContext.User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value;
+
+        if (string.IsNullOrEmpty(jwtToken) || string.IsNullOrEmpty(userEmail))
+        {
+            await _taskManager!.UpdateStatusAsync(
+                task.Id,
+                TaskState.AuthRequired,
+                new Message
+                {
+                    Parts = [new TextPart { Text = $"Missing authentication information - JWT token: {(jwtToken != null ? "present" : "missing")}, User email: {(userEmail != null ? "present" : "missing")}" }]
+                },
+                final: true,
+                cancellationToken: cancellationToken);
+            return new AuthenticationResult { IsAuthenticated = false };
+        }
+
+        return new AuthenticationResult 
+        { 
+            IsAuthenticated = true, 
+            JwtToken = jwtToken, 
+            UserEmail = userEmail 
+        };
     }
 
     /// <summary>
@@ -165,4 +233,14 @@ public abstract class BaseAgent : IAgent, ITaskProcessor, IAgentCardProvider
         Dispose(true);
         GC.SuppressFinalize(this);
     }
+}
+
+/// <summary>
+/// Result of authentication validation containing authentication status and user details
+/// </summary>
+public class AuthenticationResult
+{
+    public bool IsAuthenticated { get; set; }
+    public string? JwtToken { get; set; }
+    public string? UserEmail { get; set; }
 }

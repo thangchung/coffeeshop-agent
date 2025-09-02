@@ -14,6 +14,7 @@ namespace ServiceDefaults.Services;
 /// <summary>
 /// Service for parsing customer messages into structured orders.
 /// Follows Single Responsibility Principle (SRP) by focusing only on message parsing and order creation.
+/// Now includes support for authenticated MCP client connections.
 /// </summary>
 public interface IOrderParsingService
 {
@@ -21,10 +22,11 @@ public interface IOrderParsingService
     /// Parses a customer message into structured order items
     /// </summary>
     /// <param name="messageText">The customer's message</param>
+    /// <param name="jwtToken">JWT token for authenticated MCP requests</param>
     /// <param name="isStub">Whether to use stub data for testing</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Parsed order with items categorized by service type</returns>
-    Task<OrderDto> ParseOrderAsync(string messageText, bool isStub = false, CancellationToken cancellationToken = default);
+    Task<OrderDto> ParseOrderAsync(string messageText, string? jwtToken = null, bool isStub = false, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -49,7 +51,7 @@ public class OrderParsingService : IOrderParsingService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<OrderDto> ParseOrderAsync(string messageText, bool isStub = false, CancellationToken cancellationToken = default)
+    public async Task<OrderDto> ParseOrderAsync(string messageText, string? jwtToken = null, bool isStub = false, CancellationToken cancellationToken = default)
     {
         if (isStub)
         {
@@ -59,7 +61,7 @@ public class OrderParsingService : IOrderParsingService
         try
         {
             var mcpConfig = _configurationService.GetMcpServerConfiguration();
-            var orderJson = await ProcessWithMcpAsync(messageText, mcpConfig, cancellationToken);
+            var orderJson = await ProcessWithMcpAsync(messageText, mcpConfig, jwtToken, cancellationToken);
             
             var order = JsonSerializer.Deserialize<OrderDto>(orderJson, new JsonSerializerOptions
             {
@@ -84,12 +86,14 @@ public class OrderParsingService : IOrderParsingService
                 {
                     Name = "black coffee",
                     ItemType = ItemType.COFFEE_BLACK,
+                    Quantity = 1,
                     Price = 3
                 },
                 new ItemTypeDto
                 {
                     Name = "cappuccino",
                     ItemType = ItemType.CAPPUCCINO,
+                    Quantity = 1,
                     Price = 3.5f
                 }
             ],
@@ -98,19 +102,32 @@ public class OrderParsingService : IOrderParsingService
                 {
                     Name = "cake pop",
                     ItemType = ItemType.CAKEPOP,
+                    Quantity = 2,
                     Price = 5
                 }
             ]
         );
     }
 
-    private async Task<string> ProcessWithMcpAsync(string messageText, McpServerConfiguration mcpConfig, CancellationToken cancellationToken)
+    private async Task<string> ProcessWithMcpAsync(string messageText, McpServerConfiguration mcpConfig, string? jwtToken, CancellationToken cancellationToken)
     {
+        // Create authenticated HTTP client for MCP communication
+        var httpClient = _httpClientFactory.CreateClient();
+        httpClient.DefaultRequestHeaders.Clear();
+        
+        if (!string.IsNullOrEmpty(jwtToken))
+        {
+            httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {jwtToken}");
+            _logger.LogDebug("Added JWT authentication header for MCP client");
+        }
+
+        // Configure MCP transport with authenticated client
+        httpClient.BaseAddress = new Uri(mcpConfig.Url);
         var transport = new SseClientTransport(new()
         {
-            Endpoint = new Uri($"{mcpConfig.Url}/mcp"),
+            Endpoint = new Uri("http://product/mcp"), // Will be overridden by BaseAddress
             Name = mcpConfig.ClientName
-        }, _httpClientFactory.CreateClient());
+        }, httpClient, ownsHttpClient: true);
 
         // Create MCP client using the official factory
         using var mcpClient = await McpClientFactory.CreateAsync(transport, cancellationToken: cancellationToken);
@@ -155,9 +172,10 @@ public class OrderParsingService : IOrderParsingService
     private static string CreateOrderParsingPrompt(string schema)
     {
         return $$"""
-            Parse a customer's message into a order object in valid JSON.
+            Parse a customer's message into a order object in valid JSON (in the camel-case format).
             Use your tool to extract the name, price, and item type of the customer's message.
             Use your tool to query and get the valid price of the item.
+            The quantity of each item need keeping (if no quantity inputs from user, then auto-set to 1).
             Use the provided JSON schema for your reply (no markdown for formatting the JSON object needed):
             {{schema}}
 
@@ -170,11 +188,13 @@ public class OrderParsingService : IOrderParsingService
                     {
                         "name": "black coffee",
                         "itemType": "BLACK_COFFEE",
+                        "quantity": 1,
                         "price": 3
                     },
                     {
                         "name": "cappuccino",
                         "itemType": "CAPPUCCINO",
+                        "quantity": 1,
                         "price": 3.5
                     }
                 ],
@@ -182,18 +202,20 @@ public class OrderParsingService : IOrderParsingService
             }
 
             EXAMPLE 2:
-            Customer's message: I want a black coffee, cappuccino and a cakepop.
+            Customer's message: I want a black coffee, 2 cappuccino and 2 cakepops.
             JSON Response:
             {
                 "baristaItems": [
                     {
                         "name": "black coffee",
                         "itemType": "BLACK_COFFEE",
+                        "quantity": 1,
                         "price": 3
                     },
                     {
                         "name": "cappuccino",
                         "itemType": "CAPPUCCINO",
+                        "quantity": 2,
                         "price": 3.5
                     }
                 ],
@@ -201,6 +223,7 @@ public class OrderParsingService : IOrderParsingService
                     {
                         "name": "cakepop",
                         "itemType": "CAKEPOP",
+                        "quantity": 2,
                         "price": 5
                     }
                 ]
@@ -215,6 +238,7 @@ public class OrderParsingService : IOrderParsingService
                     {
                         "name": "croissant chocolate",
                         "itemType": "CROISSANT_CHOCOLATE",
+                        "quantity": 1,
                         "price": 5.5
                     }
                 ]
@@ -260,6 +284,7 @@ public class ItemTypeDto
     public ItemType ItemType { get; set; }
 
     public string Name { get; set; } = string.Empty;
+    public int Quantity { get; set; } = 1;
     public float Price { get; set; }
 }
 

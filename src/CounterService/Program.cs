@@ -1,10 +1,39 @@
+using System.IdentityModel.Tokens.Jwt;
 using A2A;
 using A2A.AspNetCore;
 using CounterService.Agents;
 using ServiceDefaults.Extensions;
 using Microsoft.SemanticKernel;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Identity.Web;
+using Microsoft.IdentityModel.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure Azure AD authentication
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddMicrosoftIdentityWebApi(options =>
+            {
+                builder.Configuration.Bind("AzureAd", options);
+                options.TokenValidationParameters.ValidateIssuer = true;
+                options.TokenValidationParameters.ValidateAudience = true;
+                options.TokenValidationParameters.ValidateLifetime = true;
+                options.TokenValidationParameters.ClockSkew = TimeSpan.FromMinutes(5);
+                options.TokenValidationParameters.NameClaimType = "name";
+                options.TokenValidationParameters.RoleClaimType = "role";
+            }, options =>
+            {
+                builder.Configuration.Bind("AzureAd", options);
+            });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireClaim("http://schemas.microsoft.com/identity/claims/scope", "admin");
+    });
+});
 
 AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiagnosticsSensitive", true);
 
@@ -41,6 +70,7 @@ builder.Services.AddSingleton<ITaskManager>(provider =>
     var validationService = provider.GetRequiredService<ServiceDefaults.Services.IInputValidationService>();
     var orderParsingService = provider.GetRequiredService<ServiceDefaults.Services.IOrderParsingService>();
     var messageService = provider.GetRequiredService<ServiceDefaults.Services.IA2AMessageService>();
+    var httpContextAccessor = provider.GetRequiredService<IHttpContextAccessor>();
     
     var agent = new CounterAgent(
         configService,
@@ -48,6 +78,7 @@ builder.Services.AddSingleton<ITaskManager>(provider =>
         validationService,
         orderParsingService,
         messageService,
+        httpContextAccessor,
         logger);
         
     agent.Attach(taskManager);
@@ -82,12 +113,21 @@ builder.AddServiceDefaults();
 
 var app = builder.Build();
 
+JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
+if (app.Environment.IsDevelopment())
+{
+    IdentityModelEventSource.ShowPII = true;
+}
+
+app.UseAuthentication();
+app.UseAuthorization();
+
 // Get the configured TaskManager for A2A endpoints
 var taskManager = app.Services.GetRequiredService<ITaskManager>();
 
-// Map A2A endpoints
-app.MapA2A(taskManager, "/submit-order");
-app.MapHttpA2A(taskManager, "/submit-order");
+// Map A2A endpoints with authentication requirement
+app.MapA2A(taskManager, "/submit-order").RequireAuthorization("AdminOnly");
+app.MapHttpA2A(taskManager, "/submit-order").RequireAuthorization("AdminOnly");
 
 app.MapDefaultEndpoints();
 
