@@ -10,8 +10,8 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.SemanticKernel.Connectors.Ollama" />
-        <PackageReference Include="ModelContextProtocol" />
-        <PackageReference Include="A2A.AspNetCore" />
+        <PackageReference Include="ModelContextProtocol.AspNetCore" />
+        <!--<PackageReference Include="A2A.AspNetCore" />-->
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
         <PackageReference Include="Microsoft.Identity.Web" />
         <PackageReference Include="Microsoft.SemanticKernel.Agents.A2A" />
@@ -21,6 +21,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\a2a-dotnet\src\A2A.AspNetCore\A2A.AspNetCore.csproj" />
         <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
     </ItemGroup>
 

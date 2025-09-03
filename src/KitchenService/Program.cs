@@ -9,37 +9,36 @@ using Microsoft.IdentityModel.Logging;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddMicrosoftIdentityWebApi(options =>
-            {
-                builder.Configuration.Bind("AzureAd", options);
-                options.TokenValidationParameters.ValidateIssuer = true;
-                options.TokenValidationParameters.ValidateAudience = true;
-                options.TokenValidationParameters.ValidateLifetime = true;
-                options.TokenValidationParameters.ClockSkew = TimeSpan.FromMinutes(5);
-                options.TokenValidationParameters.NameClaimType = "name";
-                options.TokenValidationParameters.RoleClaimType = "role";
-            }, options =>
-            {
-                builder.Configuration.Bind("AzureAd", options);
-            });
+            .AddMicrosoftIdentityWebApi(
+                options => {
+                    builder.Configuration.Bind("AzureAd", options);
+
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnTokenValidated = CustomTokenValidated,
+                        OnAuthenticationFailed = CustomAuthenticationFailed
+                    };
+                },
+                options => builder.Configuration.Bind("AzureAd", options));
+
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("AdminOnly", policy =>
+    options.AddPolicy("KitchenOnly", policy =>
     {
         policy.RequireAuthenticatedUser();
-        policy.RequireClaim("http://schemas.microsoft.com/identity/claims/scope", "admin");
+        policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Kitchen.ReadWrite");
     });
 });
 
 builder.Services.AddHttpContextAccessor();
 
 // Register TaskManager as singleton
-builder.Services.AddSingleton<ITaskManager>(provider =>
+builder.Services.AddScoped<ITaskManager>(provider =>
 {
     var taskManager = new TaskManager();
     var logger = provider.GetRequiredService<ILogger<KitchenAgent>>();
     var httpContextAccessor = provider.GetRequiredService<IHttpContextAccessor>();
-    var agent = new KitchenAgent(httpContextAccessor, logger);
+    var agent = new KitchenAgent(httpContextAccessor, builder.Configuration, logger);
     agent.Attach(taskManager);
     return taskManager;
 });
@@ -57,12 +56,26 @@ if (app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 
-var taskManager = app.Services.GetRequiredService<ITaskManager>();
+using var scope = app.Services.CreateAsyncScope();
+var taskManager = scope.ServiceProvider.GetRequiredService<ITaskManager>();
 
 // Map A2A endpoints
-app.MapA2A(taskManager, "/").RequireAuthorization("AdminOnly");
-app.MapHttpA2A(taskManager, "/").RequireAuthorization("AdminOnly");
+app.MapA2A(taskManager, "/").RequireAuthorization("KitchenOnly");
+app.MapHttpA2A(taskManager, "/").RequireAuthorization("KitchenOnly");
+app.MapWellKnownAgentCard(taskManager, "/").AllowAnonymous();
 
 app.MapDefaultEndpoints();
 
 app.Run();
+
+async Task CustomTokenValidated(TokenValidatedContext context)
+{
+    // Custom logic upon successful token validation
+    await Task.CompletedTask;
+}
+
+async Task CustomAuthenticationFailed(AuthenticationFailedContext context)
+{
+    // Custom logic upon authentication failure
+    await Task.CompletedTask;
+}

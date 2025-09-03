@@ -3,10 +3,11 @@ using A2A;
 
 namespace BaristaService.Agents;
 
-public class BaristaAgent(IHttpContextAccessor httpContextAccessor, ILogger<BaristaAgent> logger)
+public class BaristaAgent(IHttpContextAccessor httpContextAccessor, IConfiguration configuration, ILogger<BaristaAgent> logger)
 {
     private ITaskManager? _taskManager;
     public IHttpContextAccessor HttpContextAccessor { get; } = httpContextAccessor;
+    public IConfiguration Configuration { get; } = configuration;
     public ILogger<BaristaAgent> Logger { get; } = logger;
 
     public static readonly ActivitySource ActivitySource = new($"A2A.{nameof(BaristaAgent)}", "1.0.0");
@@ -53,7 +54,7 @@ public class BaristaAgent(IHttpContextAccessor httpContextAccessor, ILogger<Bari
             await _taskManager.UpdateStatusAsync(
                 task.Id,
                 TaskState.AuthRequired,
-                new Message
+                new AgentMessage
                 {
                     Parts = [new TextPart { Text = "User is not authenticated" }]
                 },
@@ -68,7 +69,7 @@ public class BaristaAgent(IHttpContextAccessor httpContextAccessor, ILogger<Bari
             await _taskManager.UpdateStatusAsync(
                 task.Id,
                 TaskState.Completed,
-                new Message
+                new AgentMessage
                 {
                     Parts = [new TextPart { Text = "Message processed successfully" }]
                 },
@@ -84,7 +85,7 @@ public class BaristaAgent(IHttpContextAccessor httpContextAccessor, ILogger<Bari
             await _taskManager.UpdateStatusAsync(
                 task.Id,
                 TaskState.Failed,
-                new Message
+                new AgentMessage
                 {
                     Parts = [new TextPart { Text = $"Error processing ping message: {ex.Message}" }]
                 },
@@ -106,15 +107,10 @@ public class BaristaAgent(IHttpContextAccessor httpContextAccessor, ILogger<Bari
             PushNotifications = false,
         };
 
-        // Note: Authentication is implemented at the HTTP transport level using Microsoft Entra ID
-        // JWT Bearer tokens are required for all endpoints and are validated by the middleware
-        // The authentication scheme used is "Bearer" with JWT tokens containing required scopes
         return Task.FromResult(new AgentCard
         {
             Name = "Barista Service Agent",
-            Description = "A2A server agent that processes messages and integrates with MCP server for admin users. " +
-                         "AUTHENTICATION REQUIRED: This agent requires Microsoft Entra ID JWT Bearer token authentication " +
-                         "with 'access_as_user' scope. All requests must include valid JWT tokens in the Authorization header.",
+            Description = "Barista service hosts an A2A server agent that processes an incoming messages with payload contains barista items.",
             Url = agentUrl,
             Version = "1.0.0",
             DefaultInputModes = ["text"],
@@ -124,10 +120,32 @@ public class BaristaAgent(IHttpContextAccessor httpContextAccessor, ILogger<Bari
                 new AgentSkill
                 {
                     Name = "process_order",
-                    Description = "Process messages and communicate with MCP server for admin users. " +
-                                 "Requires JWT authentication with admin role and 'access_as_user' scope."
+                    Description = "Process an incoming messages with payload contains barista items."
                 }
             ],
+            SecuritySchemes = new()
+             {
+                 ["root"] = new OAuth2SecurityScheme(
+                    new OAuthFlows
+                    {
+                        AuthorizationCode = new AuthorizationCodeOAuthFlow(
+                            authorizationUrl: new Uri($"{Configuration["AzureAd:Instance"]}{Configuration["AzureAd:TenantId"]}/oauth2/v2.0/authorize"),
+                            tokenUrl: new Uri($"{Configuration["AzureAd:Instance"]}{Configuration["AzureAd:TenantId"]}/oauth2/v2.0/token"),
+                            scopes: new Dictionary<string, string>
+                            {
+                                { $"api://{Configuration["AzureAd:ClientId"]}/CoffeeShop.Barista.ReadWrite", "Access the Barista Service as the signed-in user" }
+                            })
+                    },
+                    "OAuth2 with JWT Bearer tokens"
+                )
+             },
+            Security =
+            [
+                new Dictionary<string, string[]>
+                {
+                    { "Bearer", ["CoffeeShop.Barista.ReadWrite"] }
+                }
+            ]
         });
     }
 }

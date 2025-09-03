@@ -9,29 +9,6 @@ using Microsoft.SemanticKernel;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddMicrosoftIdentityWebApi(options =>
-            {
-                builder.Configuration.Bind("AzureAd", options);
-                options.TokenValidationParameters.ValidateIssuer = true;
-                options.TokenValidationParameters.ValidateAudience = true;
-                options.TokenValidationParameters.ValidateLifetime = true;
-                options.TokenValidationParameters.ClockSkew = TimeSpan.FromMinutes(5);
-                options.TokenValidationParameters.NameClaimType = "name";
-                options.TokenValidationParameters.RoleClaimType = "role";
-            }, options =>
-            {
-                builder.Configuration.Bind("AzureAd", options);
-            });
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("AdminOnly", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-        policy.RequireClaim("http://schemas.microsoft.com/identity/claims/scope", "admin");
-    });
-});
-
 AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiagnosticsSensitive", true);
 
 var chatModelId = builder.Configuration.GetConnectionString("chatModelId");
@@ -52,16 +29,41 @@ if (string.IsNullOrEmpty(apiKey))
     throw new ArgumentNullException(nameof(apiKey), "The apiKey connection string cannot be null or empty.");
 }
 
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddMicrosoftIdentityWebApi(options =>
+    {
+        builder.Configuration.Bind("AzureAd", options);
+
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = CustomTokenValidated,
+            OnAuthenticationFailed = CustomAuthenticationFailed
+        };
+    }, options => builder.Configuration.Bind("AzureAd", options))
+    .EnableTokenAcquisitionToCallDownstreamApi(options => { })
+    .AddInMemoryTokenCaches();
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("CounterOnly", policy =>
+    {
+        //todo: override token validate and push opa into the pipeline
+
+        policy.RequireAuthenticatedUser();
+        policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Counter.ReadWrite");
+    });
+});
+
 // Register TaskManager as singleton
-builder.Services.AddSingleton<ITaskManager>(provider =>
+builder.Services.AddScoped<ITaskManager>(provider =>
 {
     var taskManager = new TaskManager();
-    var config = provider.GetRequiredService<IConfiguration>();
     var clientFactory = provider.GetRequiredService<IHttpClientFactory>();
     var logger = provider.GetRequiredService<ILogger<CounterAgent>>();
     var httpContextAccessor = provider.GetRequiredService<IHttpContextAccessor>();
+    var tokenAcquisition = provider.GetRequiredService<ITokenAcquisition>();
     var kernel = provider.GetRequiredService<Kernel>();
-    var agent = new CounterAgent(kernel, config, clientFactory, httpContextAccessor, logger);
+    var agent = new CounterAgent(kernel, builder.Configuration, clientFactory, httpContextAccessor, tokenAcquisition, logger);
     agent.Attach(taskManager);
     return taskManager;
 });
@@ -104,12 +106,26 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Get the configured TaskManager for A2A endpoints
-var taskManager = app.Services.GetRequiredService<ITaskManager>();
+using var scope = app.Services.CreateAsyncScope();
+var taskManager = scope.ServiceProvider.GetRequiredService<ITaskManager>();
 
 // Map A2A endpoints
-app.MapA2A(taskManager, "/submit-order").RequireAuthorization("AdminOnly");
-app.MapHttpA2A(taskManager, "/submit-order").RequireAuthorization("AdminOnly");
+app.MapA2A(taskManager, "/submit-order").RequireAuthorization("CounterOnly");
+app.MapHttpA2A(taskManager, "/submit-order").RequireAuthorization("CounterOnly");
+app.MapWellKnownAgentCard(taskManager, "/submit-order").AllowAnonymous();
 
 app.MapDefaultEndpoints();
 
 app.Run();
+
+async Task CustomTokenValidated(TokenValidatedContext context)
+{
+       // Custom logic upon successful token validation
+    await Task.CompletedTask;
+}
+
+async Task CustomAuthenticationFailed(AuthenticationFailedContext context)
+{
+    // Custom logic upon authentication failure
+    await Task.CompletedTask;
+}
