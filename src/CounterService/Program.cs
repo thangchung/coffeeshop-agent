@@ -1,11 +1,15 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Authentication;
+using System.Security.Claims;
 using A2A;
 using A2A.AspNetCore;
 using CounterService.Agents;
+using CounterService.AuthZ;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Logging;
 using Microsoft.SemanticKernel;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,14 +51,11 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("CounterOnly", policy =>
     {
-        //todo: override token validate and push opa into the pipeline
-
         policy.RequireAuthenticatedUser();
         policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Counter.ReadWrite");
     });
 });
 
-// Register TaskManager as singleton
 builder.Services.AddScoped<ITaskManager>(provider =>
 {
     var taskManager = new TaskManager();
@@ -92,6 +93,10 @@ kernelBuilder.Services.ConfigureHttpClientDefaults(c =>
     });
 });
 
+builder.Services.AddOpenApi();
+
+builder.Services.AddScoped<IAuthZService, StuffAuthZService>();
+
 builder.AddServiceDefaults();
 
 var app = builder.Build();
@@ -100,6 +105,9 @@ JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 if (app.Environment.IsDevelopment())
 {
     IdentityModelEventSource.ShowPII = true;
+
+    app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 
 app.UseAuthentication();
@@ -110,9 +118,9 @@ using var scope = app.Services.CreateAsyncScope();
 var taskManager = scope.ServiceProvider.GetRequiredService<ITaskManager>();
 
 // Map A2A endpoints
-app.MapA2A(taskManager, "/submit-order").RequireAuthorization("CounterOnly");
-app.MapHttpA2A(taskManager, "/submit-order").RequireAuthorization("CounterOnly");
-app.MapWellKnownAgentCard(taskManager, "/submit-order").AllowAnonymous();
+app.MapA2A(taskManager, "/").RequireAuthorization("CounterOnly");
+app.MapHttpA2A(taskManager, "/").RequireAuthorization("CounterOnly");
+app.MapWellKnownAgentCard(taskManager, "/").AllowAnonymous();
 
 app.MapDefaultEndpoints();
 
@@ -120,7 +128,14 @@ app.Run();
 
 async Task CustomTokenValidated(TokenValidatedContext context)
 {
-       // Custom logic upon successful token validation
+    var authZ = context.HttpContext.RequestServices.GetRequiredService<IAuthZService>();
+
+    // enrich and claim transformation for user roles
+    var userEmail = context.Principal?.FindFirst(ClaimTypes.Upn)?.Value;
+    var roleIdentity = new ClaimsIdentity("RoleClaims");
+    roleIdentity.AddClaim(new Claim(ClaimTypes.Role, authZ.MapUserToRole(userEmail ?? throw new AuthenticationException())));
+    context.Principal?.AddIdentity(roleIdentity);
+
     await Task.CompletedTask;
 }
 

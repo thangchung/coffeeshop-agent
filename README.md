@@ -31,3 +31,4 @@ http://localhost:5000/.well-known/agent.json
 - https://github.com/thangchung/practical-dotnet-aspire
 - https://github.com/thangchung/mcp-labs/blob/feat/a2a_mcp_auth/a2a_mcp_auth_dotnet
 - https://devblogs.microsoft.com/foundry/building-ai-agents-a2a-dotnet-sdk/
+- https://devblogs.microsoft.com/dotnet/build-a-model-context-protocol-mcp-server-in-csharp/

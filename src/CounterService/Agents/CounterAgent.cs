@@ -10,6 +10,7 @@ using Microsoft.Identity.Web;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.ChatCompletion;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 
 namespace CounterService.Agents;
@@ -61,16 +62,7 @@ public class CounterAgent(
         var httpContext = HttpContextAccessor.HttpContext;
         if (httpContext?.User?.Identity?.IsAuthenticated != true)
         {
-            await _taskManager.UpdateStatusAsync(
-                task.Id,
-                TaskState.Failed,
-                new AgentMessage
-                {
-                    Parts = [new TextPart { Text = "User is not authenticated" }]
-                },
-                final: true,
-                cancellationToken: cancellationToken);
-            return;
+            throw new AuthenticationException("User is not authenticated.");
         }
 
         var authHeader = httpContext.Request.Headers["Authorization"].FirstOrDefault();
@@ -79,20 +71,10 @@ public class CounterAgent(
             JwtToken = authHeader.Substring("Bearer ".Length).Trim();
         }
 
-        var userEmail = httpContext.User.FindFirst(ClaimTypes.Upn)?.Value;
-
-        if (string.IsNullOrEmpty(JwtToken) || string.IsNullOrEmpty(userEmail))
+        var role = httpContext.User.FindFirst(ClaimTypes.Role)?.Value;
+        if (string.IsNullOrEmpty(JwtToken) || string.IsNullOrEmpty(role) || role?.ToLowerInvariant() is not "admin")
         {
-            await _taskManager.UpdateStatusAsync(
-                task.Id,
-                TaskState.AuthRequired,
-                new AgentMessage
-                {
-                    Parts = [new TextPart { Text = $"Missing authentication information - JWT token: {(JwtToken != null ? "present" : "missing")}, User email: {(userEmail != null ? "present" : "missing")}" }]
-                },
-                final: true,
-                cancellationToken: cancellationToken);
-            return;
+            throw new AuthenticationException("JWT token: missing or Role: admin is required.");
         }
 
         foreach (var (key, endpoint) in DownstreamAgentEndpoints)
@@ -112,13 +94,13 @@ public class CounterAgent(
             {
                 //todo: refactor this
                 accessToken = await TokenAcquisition
-                        .GetAccessTokenForUserAsync(["api://dd6902c4-7083-4ea2-a414-60bb7834b921/CoffeeShop.Barista.ReadWrite"]);
+                        .GetAccessTokenForUserAsync([$"api://{Configuration["AzureAd:BaristaClientId"]}/CoffeeShop.Barista.ReadWrite"]);
             }
             else if (key == "KITCHEN")
             {
                 //todo: refactor this
                 accessToken = await TokenAcquisition
-                        .GetAccessTokenForUserAsync(["api://7776f08f-c6bc-41ee-a021-830d6d2be9b9/CoffeeShop.Kitchen.ReadWrite"]);
+                        .GetAccessTokenForUserAsync([$"api://{Configuration["AzureAd:KitchenClientId"]}/CoffeeShop.Kitchen.ReadWrite"]);
             }
             else
             {
@@ -150,16 +132,7 @@ public class CounterAgent(
         var httpContext = HttpContextAccessor.HttpContext;
         if (httpContext?.User?.Identity?.IsAuthenticated != true)
         {
-            await _taskManager.UpdateStatusAsync(
-                task.Id,
-                TaskState.Failed,
-                new AgentMessage
-                {
-                    Parts = [new TextPart { Text = "User is not authenticated" }]
-                },
-                final: true,
-                cancellationToken: cancellationToken);
-            return;
+            throw new AuthenticationException("User is not authenticated.");
         }
 
         Logger.LogInformation("Task updated with ID: {TaskId}", task.Id);
@@ -267,17 +240,9 @@ public class CounterAgent(
 
                 // Extract the response content in a readable format
                 string responseText;
-                if (response.Success && response.Data != null)
+                if (response.Success)
                 {
-                    // Try to extract the actual response from the task
-                    if (response.Data.GetType().GetProperty("Response")?.GetValue(response.Data) is string taskResponse)
-                    {
-                        responseText = $"Success! {a2aClient.GetType().FullName} responded: {taskResponse}";
-                    }
-                    else
-                    {
-                        responseText = $"A2A task completed successfully. Task ID: {response.Data}";
-                    }
+                    responseText = response.Message;
                 }
                 else
                 {
@@ -300,7 +265,7 @@ public class CounterAgent(
                 TaskState.Completed,
                 new AgentMessage
                 {
-                    Parts = [new TextPart { Text = "The message sent successfully via A2A protocol" }]
+                    Parts = [new TextPart { Text = "The order is created." }]
                 },
                 final: true,
                 cancellationToken: cancellationToken);
@@ -392,10 +357,11 @@ public class CounterAgent(
                     }
                     else
                     {
+                        var msg = task.Status.Message?.Parts?.FirstOrDefault()?.AsTextPart().Text;
                         return new A2AServiceResponse
                         {
                             Success = true,
-                            Message = "A2A task created successfully",
+                            Message = msg ?? "task created",
                             Data = new
                             {
                                 TaskId = task.Id,
@@ -472,7 +438,7 @@ public class CounterAgent(
         {
             //todo: refactor this
             var accessToken = await TokenAcquisition
-                        .GetAccessTokenForUserAsync(["api://3015bf61-9e1b-40c6-9c52-d5ae0a1a0d45/CoffeeShop.Mcp.Product.ReadWrite"]);
+                        .GetAccessTokenForUserAsync([$"api://{Configuration["AzureAd:ProductClientId"]}/CoffeeShop.Mcp.Product.ReadWrite"]);
 
             // mcp
             var httpClient = HttpClientFactory.CreateClient();
@@ -491,6 +457,8 @@ public class CounterAgent(
 
             var tools = await mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
 
+            var productsResource = await mcpClient.ReadResourceAsync("data://products", cancellationToken: cancellationToken);
+
             var options = JsonSerializerOptions.Default;
             var exporterOptions = new JsonSchemaExporterOptions()
             {
@@ -498,12 +466,16 @@ public class CounterAgent(
             };
             var schema = options.GetJsonSchemaAsNode(typeof(OrderDto), exporterOptions);
             var promptChunked = $$"""
+            You are a counter/staff in the coffeeshop, and only serve for customers to order food and beverages. If customer asks for anything else, please politely refuse and tell them you only serve food and beverages.
+
             Parse a customer's message into a order object in valid JSON (in the camel-case format).
             Use your tool to extract the name, price, and item type of the customer's message.
             Use your tool to query and get the valid price of the item.
             The quantity of each item need keeping (if no quantity inputs from user, then auto-set to 1).
             Use the provided JSON schema for your reply (no markdown for formatting the JSON object needed):
             {{schema}}
+
+            The itemType (products) should be one of the following values: {{productsResource.Contents[0].ToAIContent()}}, and if customers provides other value, please tell them the store doesn't have and request them to change to the valid one.
 
             EXAMPLE 1:
             Customer's message: I want a black coffee and cappuccino.

@@ -65,13 +65,15 @@ public class KitchenAgent(IHttpContextAccessor httpContextAccessor, IConfigurati
 
         try
         {
+            var items = task.History?.FirstOrDefault()?.Metadata?.GetValueOrDefault("items");
+
             // Complete the task
             await _taskManager.UpdateStatusAsync(
                 task.Id,
                 TaskState.Completed,
                 new AgentMessage
                 {
-                    Parts = [new TextPart { Text = "Message processed successfully" }]
+                    Parts = [new TextPart { Text = $"{items!.Value} cooked." }]
                 },
                 final: true,
                 cancellationToken: cancellationToken);

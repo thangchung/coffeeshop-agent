@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -65,6 +64,12 @@ namespace Microsoft.Extensions.Hosting
                         .AddSource("A2A.CounterAgent")
                         .AddSource("A2A.BaristaAgent")
                         .AddSource("A2A.KitchenAgent")
+                        .AddSource("A2A.TaskManager")
+                        .AddSource("A2A.Processor")
+                        .AddSource("Microsoft.SemanticKernel")
+                        .AddSource("Microsoft.SemanticKernel.Diagnostics")
+                        .AddSource("Experimental.ModelContextProtocol")
+                        //.AddSource("*")
                         .AddAspNetCoreInstrumentation(tracing =>
                             // Exclude health check requests from tracing
                             tracing.Filter = context =>

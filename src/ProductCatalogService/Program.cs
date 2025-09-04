@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Identity.Web;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.Authentication;
+using ProductCatalogService.Resources;
 using ProductCatalogService.Tools;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,11 +50,20 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddMcpServer()
     .WithHttpTransport()
-    .WithTools<McpTools>();
+    .WithTools<McpTools>()
+    .WithResources<McpResources>();
+
+builder.Services.AddOpenApi();
 
 builder.AddServiceDefaults();
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.MapScalarApiReference();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
