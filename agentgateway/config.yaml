@@ -43,16 +43,3 @@ binds:
         a2a: {}
       backends:
       - host: localhost:5002
-- port: 3005
-  listeners:
-  - routes:
-    - backends:
-      - ai:
-          name: gemini
-          provider:
-            gemini:
-              # Optional; overrides the model in requests
-              model: gemini-1.5-flash
-      policies:
-        backendAuth:
-          key: "$GEMINI_API_KEY"

@@ -6,9 +6,13 @@ using A2A.AspNetCore;
 using CounterService.Agents;
 using CounterService.AuthZ;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.VectorData;
 using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Logging;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.Redis;
+using Microsoft.SemanticKernel.Memory;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -64,7 +68,9 @@ builder.Services.AddScoped<ITaskManager>(provider =>
     var httpContextAccessor = provider.GetRequiredService<IHttpContextAccessor>();
     var tokenAcquisition = provider.GetRequiredService<ITokenAcquisition>();
     var kernel = provider.GetRequiredService<Kernel>();
-    var agent = new CounterAgent(kernel, builder.Configuration, clientFactory, httpContextAccessor, tokenAcquisition, logger);
+    var embeddingGenerator = provider.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
+    var vectorStore = provider.GetRequiredService<VectorStore>();
+    var agent = new CounterAgent(kernel, embeddingGenerator, vectorStore, builder.Configuration, clientFactory, httpContextAccessor, tokenAcquisition, logger);
     agent.Attach(taskManager);
     return taskManager;
 });
@@ -82,7 +88,10 @@ var kernelBuilder = builder.Services.AddKernel()
     //    modelId: "openai/gpt-5-nano",
     //    apiKey: apiKey,
     //    endpoint: new Uri("https://models.github.ai/inference"));
-    .AddAzureOpenAIChatCompletion(chatModelId, endpoint, apiKey);
+    .AddAzureOpenAIChatCompletion(chatModelId, endpoint, apiKey)
+    .AddAzureOpenAIEmbeddingGenerator(chatModelId, endpoint, apiKey);
+
+builder.Services.AddRedisVectorStore(builder.Configuration.GetConnectionString("cache")!, new() { StorageType = RedisStorageType.Json});
 
 kernelBuilder.Services.ConfigureHttpClientDefaults(c =>
 {

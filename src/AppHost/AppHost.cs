@@ -1,8 +1,13 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
 var chatModelId = builder.AddConnectionString("chatModelId");
+var embeddingModelId = builder.AddConnectionString("embeddingModelId");
 var endpoint = builder.AddConnectionString("endpoint");
 var apiKey = builder.AddConnectionString("apiKey");
+
+var cache = builder.AddRedis("cache")
+                .WithLifetime(ContainerLifetime.Persistent)
+                .WithRedisInsight();
 
 var product = builder.AddProject<Projects.ProductCatalogService>("product")
     .WithEnvironment("AzureAd__Instance", builder.Configuration["AzureAd:Instance"])
@@ -24,14 +29,13 @@ var counter = builder.AddProject<Projects.CounterService>("counter")
     .WithEnvironment("AzureAd__TenantId", builder.Configuration["AzureAd:TenantId"])
     .WithEnvironment("AzureAd__ClientId", builder.Configuration["AzureAd:CounterClientId"])
     .WithEnvironment("AzureAd__ClientSecret", builder.Configuration["AzureAd:CounterClientSecret"])
-    .WithEnvironment("AzureAd__ProductClientId", builder.Configuration["AzureAd:ProductClientId"])
-    .WithEnvironment("AzureAd__BaristaClientId", builder.Configuration["AzureAd:BaristaClientId"])
-    .WithEnvironment("AzureAd__KitchenClientId", builder.Configuration["AzureAd:KitchenClientId"])
     .WithReference(product).WaitFor(product)
     .WithReference(barista).WaitFor(barista)
     .WithReference(kitchen).WaitFor(kitchen);
 counter.WithReference(chatModelId);
+counter.WithReference(embeddingModelId);
 counter.WithReference(endpoint);
 counter.WithReference(apiKey);
+counter.WithReference(cache).WaitFor(cache);
 
 builder.Build().Run();

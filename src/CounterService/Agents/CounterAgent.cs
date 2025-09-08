@@ -6,6 +6,8 @@ using System.Text.Json.Schema;
 using System.Text.Json.Serialization;
 using A2A;
 using CounterService.Models;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.VectorData;
 using Microsoft.Identity.Web;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
@@ -17,6 +19,8 @@ namespace CounterService.Agents;
 
 public class CounterAgent(
     Kernel kernel,
+    IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+    VectorStore vectorStore,
     IConfiguration configuration,
     IHttpClientFactory httpClientFactory,
     IHttpContextAccessor httpContextAccessor,
@@ -28,6 +32,8 @@ public class CounterAgent(
 
     public ILogger<CounterAgent> Logger { get; } = logger;
     public Kernel Kernel { get; } = kernel;
+    public IEmbeddingGenerator<string, Embedding<float>> EmbeddingGenerator { get; } = embeddingGenerator;
+    public VectorStore VectorStore { get; } = vectorStore;
     public IConfiguration Configuration { get; } = configuration;
     public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory;
     public IHttpContextAccessor HttpContextAccessor { get; } = httpContextAccessor;
@@ -89,23 +95,11 @@ public class CounterAgent(
             activity?.SetTag($"downstream.{key.ToLower()}.agentCard.url", agentCard.Url);
             Logger.LogDebug("Resolved Agent card: {Endpoint}", $"{agentCard.Url}");
 
-            string accessToken;
-            if (key == "BARISTA")
-            {
-                //todo: refactor this
-                accessToken = await TokenAcquisition
-                        .GetAccessTokenForUserAsync([$"api://{Configuration["AzureAd:BaristaClientId"]}/CoffeeShop.Barista.ReadWrite"]);
-            }
-            else if (key == "KITCHEN")
-            {
-                //todo: refactor this
-                accessToken = await TokenAcquisition
-                        .GetAccessTokenForUserAsync([$"api://{Configuration["AzureAd:KitchenClientId"]}/CoffeeShop.Kitchen.ReadWrite"]);
-            }
-            else
-            {
-                throw new InvalidOperationException($"Unknown downstream service key: {key}");
-            }
+            //todo: handle the exception later
+            var scope = ((OAuth2SecurityScheme)agentCard.SecuritySchemes["root"]).Flows.AuthorizationCode.Scopes.FirstOrDefault().Key;
+            activity?.SetTag($"downstream.{key.ToLower()}.agentCard.security_schema_scope", scope);
+            string accessToken = await TokenAcquisition.GetAccessTokenForUserAsync([scope]);
+            
             httpClient.DefaultRequestHeaders.Clear();
             httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
             var client = new A2AClient(new Uri(agentCard.Url), httpClient);
@@ -405,6 +399,11 @@ public class CounterAgent(
 
     private async Task<Dictionary<A2AClient, List<ItemTypeDto>>> ParseInputMessage(Kernel kernel, string messageText, bool isStub = false, CancellationToken cancellationToken = default)
     {
+        //if (!await MemoryStore.DoesCollectionExistAsync("semanticCache"))
+        //{
+        //    await MemoryStore.CreateCollectionAsync("semanticCache");
+        //}
+
         var messageClassified = !isStub ? string.Empty :
             """
             {
@@ -433,12 +432,13 @@ public class CounterAgent(
             }
             """;
 
+        var medata = await DiscoverAuthServerMetadata(new Uri("https+http://product/"));
+        var scope = medata.ScopesSupported.FirstOrDefault() ?? throw new AuthenticationException("Couldn't find scope for MCP server.");
+
         IMcpClient? mcpClient = null;
         if (!isStub)
         {
-            //todo: refactor this
-            var accessToken = await TokenAcquisition
-                        .GetAccessTokenForUserAsync([$"api://{Configuration["AzureAd:ProductClientId"]}/CoffeeShop.Mcp.Product.ReadWrite"]);
+            var accessToken = await TokenAcquisition.GetAccessTokenForUserAsync([scope]);
 
             // mcp
             var httpClient = HttpClientFactory.CreateClient();
@@ -465,17 +465,17 @@ public class CounterAgent(
                 TreatNullObliviousAsNonNullable = true,
             };
             var schema = options.GetJsonSchemaAsNode(typeof(OrderDto), exporterOptions);
-            var promptChunked = $$"""
-            You are a counter/staff in the coffeeshop, and only serve for customers to order food and beverages. If customer asks for anything else, please politely refuse and tell them you only serve food and beverages.
+            var instructions = $$"""
+            You are a counter/staff member in the coffee shop, and only serve customers who order food and beverages. If the customer asks for anything else, please politely refuse and tell them you only serve food and beverages.
 
-            Parse a customer's message into a order object in valid JSON (in the camel-case format).
+            Parse a customer's message into an order object in valid JSON (in the camel-case format).
             Use your tool to extract the name, price, and item type of the customer's message.
-            Use your tool to query and get the valid price of the item.
-            The quantity of each item need keeping (if no quantity inputs from user, then auto-set to 1).
+            Use your tool to query and get the valid price of the item (If you have a list of item types, then call to GetItemPrices tool at a priority.).
+            The quantity of each item needs to be kept (if no quantity input from the user, then auto-set to 1).
             Use the provided JSON schema for your reply (no markdown for formatting the JSON object needed):
             {{schema}}
 
-            The itemType (products) should be one of the following values: {{productsResource.Contents[0].ToAIContent()}}, and if customers provides other value, please tell them the store doesn't have and request them to change to the valid one.
+            The itemType (products) should be one of the following values: {{productsResource.Contents[0].ToAIContent()}}, and if customers provide other value, please tell them the store doesn't have it and request them to change to the valid one.
 
             EXAMPLE 1:
             Customer's message: I want a black coffee and cappuccino.
@@ -561,7 +561,7 @@ public class CounterAgent(
                    Name = "ClassificationAgent",
                    Arguments = new KernelArguments(new PromptExecutionSettings()
                    { FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(options: new() { RetainArgumentTypes = true }) }),
-                   Instructions = promptChunked,
+                   Instructions = instructions,
                    Kernel = kernel
                };
 
@@ -598,6 +598,17 @@ public class CounterAgent(
         return selectedClients;
     }
 
+    public async Task<ProtectedResourceMetadata> DiscoverAuthServerMetadata(Uri authServerUri)
+    {
+        var metadataEndpoint = ".well-known/oauth-protected-resource";
+        using var httpClient = HttpClientFactory.CreateClient();
+        httpClient.BaseAddress = authServerUri;
+
+        var jsonResponse = await httpClient.GetStringAsync(metadataEndpoint);
+        var metadata = JsonSerializer.Deserialize<ProtectedResourceMetadata>(jsonResponse);
+        return metadata;
+    }
+
     public enum ItemType
     {
         // Beverages
@@ -626,4 +637,22 @@ public class CounterAgent(
     }
 
     public record OrderDto(List<ItemTypeDto> BaristaItems, List<ItemTypeDto> KitchenItems);
+
+    public class ProtectedResourceMetadata
+    {
+        [JsonPropertyName("resource_type")]
+        public string ResourceType { get; set; }
+
+        [JsonPropertyName("resource")]
+        public Uri Resource { get; set; }
+
+        [JsonPropertyName("authorization_servers")]
+        public Uri[] AuthorizationServers { get; set; }
+
+        [JsonPropertyName("scopes_supported")]
+        public string[] ScopesSupported { get; set; }
+
+        [JsonPropertyName("bearer_methods_supported")]
+        public string[] BearerMethodsSupported { get; set; }
+    }
 }
