@@ -35,7 +35,7 @@ public class A2AResponseMapper : IA2AResponseMapper
         return response switch
         {
             AgentTask task => MapTaskResponse(task),
-            Message messageResponse => MapMessageResponse(messageResponse),
+            AgentMessage messageResponse => MapMessageResponse(messageResponse),
             _ => MapUnknownResponse(response)
         };
     }
@@ -58,7 +58,7 @@ public class A2AResponseMapper : IA2AResponseMapper
         };
     }
 
-    private A2AServiceResponse MapMessageResponse(Message messageResponse)
+    private A2AServiceResponse MapMessageResponse(AgentMessage messageResponse)
     {
         _logger.LogInformation("Received A2A message response");
 

@@ -42,7 +42,7 @@ public class SimpleAgent : BaseAgent
         await _taskManager!.UpdateStatusAsync(
             task.Id,
             TaskState.Completed,
-            new Message
+            new AgentMessage
             {
                 Parts = [new TextPart { Text = "Message processed successfully" }]
             },

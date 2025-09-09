@@ -4,36 +4,47 @@
     <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.4.1" />
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.4.2" />
+    <PackageVersion Include="Aspire.Hosting.Redis" Version="9.4.2" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.7.25380.108" />
+    
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.8.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.4.1" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Agents.A2A" Version="1.63.0-alpha" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Agents.Core" Version="1.63.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Agents.A2A" Version="1.64.0-alpha" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Agents.Core" Version="1.64.0" />
     <PackageVersion Include="Microsoft.SemanticKernel.Agents.OpenAI" Version="1.63.0-preview" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.63.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Ollama" Version="1.63.0-alpha" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.64.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Ollama" Version="1.64.0-alpha" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Redis" Version="1.64.0-preview" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.12.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0-preview.7.25380.108" />
-    <PackageVersion Include="Microsoft.Identity.Web" Version="3.13.2" />
+    <PackageVersion Include="Microsoft.Identity.Web" Version="3.14.0" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.7.2" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
-    <PackageVersion Include="A2A.AspNetCore" Version="0.1.0-preview.2" />
+    <PackageVersion Include="A2A.AspNetCore" Version="0.3.1-preview" />
     <PackageVersion Include="ModelContextProtocol" Version="0.3.0-preview.4" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.3.0-preview.4" />
-    <PackageVersion Include="Microsoft.SemanticKernel" Version="1.63.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel" Version="1.64.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.6" />
-    
-    <!-- Testing packages -->
+  </ItemGroup>
+  <ItemGroup Label="Web">
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="9.8.0" />
+    <PackageVersion Include="System.Linq.Async" Version="6.0.1" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.61.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.SqliteVec" Version="1.61.0-preview" />
+  </ItemGroup>
+  <ItemGroup Label="Testing">
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.0-preview.7.25380.15" />
     <PackageVersion Include="xunit" Version="2.9.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0-preview.7.25380.108" />
-    <PackageVersion Include="Aspire.Hosting.Testing" Version="9.4.1" />
+    <PackageVersion Include="Aspire.Hosting.Testing" Version="9.4.2" />
     <PackageVersion Include="Microsoft.Extensions.Testing.Abstractions" Version="9.8.0" />
   </ItemGroup>
 </Project>

@@ -90,7 +90,7 @@ public class CounterAgent : BaseAgent
             await _taskManager!.UpdateStatusAsync(
                 task.Id,
                 TaskState.Failed,
-                new Message { Parts = [new TextPart { Text = validationResult.ErrorMessage! }] },
+                new AgentMessage { Parts = [new TextPart { Text = validationResult.ErrorMessage! }] },
                 final: true,
                 cancellationToken: cancellationToken);
             return;
@@ -102,7 +102,7 @@ public class CounterAgent : BaseAgent
         await _taskManager!.UpdateStatusAsync(
             task.Id,
             TaskState.Working,
-            new Message
+            new AgentMessage
             {
                 Parts = [new TextPart { Text = $"Processing order via A2A protocol: {messageText}" }]
             },
@@ -125,7 +125,7 @@ public class CounterAgent : BaseAgent
         await _taskManager.UpdateStatusAsync(
             task.Id,
             TaskState.Completed,
-            new Message
+            new AgentMessage
             {
                 Parts = [new TextPart { Text = "Order processed successfully via A2A protocol" }]
             },

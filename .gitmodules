@@ -1,0 +1,3 @@
+[submodule "src/a2a-dotnet"]
+	path = src/a2a-dotnet
+	url = https://github.com/a2aproject/a2a-dotnet

@@ -16,6 +16,8 @@ change_target_frameworks() {
     sed -i 's/"Microsoft.NET.Test.Sdk" Version="18.0.0-preview.7.25380.15"/"Microsoft.NET.Test.Sdk" Version="17.10.0"/g' Directory.Packages.props
     sed -i 's/"Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0-preview.7.25380.108"/"Microsoft.AspNetCore.Mvc.Testing" Version="8.0.8"/g' Directory.Packages.props
     sed -i 's/"Microsoft.Extensions.Testing.Abstractions" Version="9.8.0"/"Microsoft.Extensions.Testing.Abstractions" Version="8.8.0"/g' Directory.Packages.props
+    sed -i 's/"Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.7.25380.108"/"Microsoft.AspNetCore.OpenApi" Version="8.0.8"/g' Directory.Packages.props
+    sed -i 's/"Scalar.AspNetCore" Version="2.7.2"/"Scalar.AspNetCore" Version="1.2.20"/g' Directory.Packages.props
 }
 
 # Function to restore target frameworks back to net10.0
@@ -31,6 +33,8 @@ restore_target_frameworks() {
     sed -i 's/"Microsoft.NET.Test.Sdk" Version="17.10.0"/"Microsoft.NET.Test.Sdk" Version="18.0.0-preview.7.25380.15"/g' Directory.Packages.props
     sed -i 's/"Microsoft.AspNetCore.Mvc.Testing" Version="8.0.8"/"Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0-preview.7.25380.108"/g' Directory.Packages.props
     sed -i 's/"Microsoft.Extensions.Testing.Abstractions" Version="8.8.0"/"Microsoft.Extensions.Testing.Abstractions" Version="9.8.0"/g' Directory.Packages.props
+    sed -i 's/"Microsoft.AspNetCore.OpenApi" Version="8.0.8"/"Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.7.25380.108"/g' Directory.Packages.props
+    sed -i 's/"Scalar.AspNetCore" Version="1.2.20"/"Scalar.AspNetCore" Version="2.7.2"/g' Directory.Packages.props
     
     # Restore global.json
     sed -i 's/"version": "8.0.119"/"version": "10.0.100-preview.7.25380.108"/g' global.json

@@ -116,7 +116,7 @@ public class A2AMessageService : IA2AMessageService
         activity?.SetTag("items.count", items.Count);
 
         // Create A2A message with minimal metadata (authentication is in HTTP headers)
-        var a2aMessage = new Message
+        var a2aMessage = new AgentMessage
         {
             Role = MessageRole.User,
             MessageId = Guid.NewGuid().ToString(),

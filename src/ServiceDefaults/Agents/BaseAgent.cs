@@ -120,7 +120,7 @@ public abstract class BaseAgent : IAgent, ITaskProcessor, IAgentCardProvider
             await _taskManager!.UpdateStatusAsync(
                 task.Id,
                 TaskState.AuthRequired,
-                new Message
+                new AgentMessage
                 {
                     Parts = [new TextPart { Text = AgentConstants.ErrorMessages.UserNotAuthenticated }]
                 },
@@ -143,7 +143,7 @@ public abstract class BaseAgent : IAgent, ITaskProcessor, IAgentCardProvider
             await _taskManager!.UpdateStatusAsync(
                 task.Id,
                 TaskState.AuthRequired,
-                new Message
+                new AgentMessage
                 {
                     Parts = [new TextPart { Text = $"Missing authentication information - JWT token: {(jwtToken != null ? "present" : "missing")}, User email: {(userEmail != null ? "present" : "missing")}" }]
                 },
@@ -182,7 +182,7 @@ public abstract class BaseAgent : IAgent, ITaskProcessor, IAgentCardProvider
         await _taskManager!.UpdateStatusAsync(
             task.Id,
             TaskState.Failed,
-            new Message
+            new AgentMessage
             {
                 Parts = [new TextPart { Text = errorMessage }]
             },

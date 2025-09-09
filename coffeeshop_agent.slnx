@@ -1,5 +1,19 @@
 <Solution>
-  <Folder Name="/Solution Items/">
+  <Folder Name="/AgentGateway/">
+    <File Path="agentgateway/config.yaml" />
+  </Folder>
+  <Folder Name="/Agents/">
+    <Project Path="src/BaristaService/BaristaService.csproj" Id="9a445033-1195-4525-b759-c6d327db8eed" />
+    <Project Path="src/CounterService/CounterService.csproj" Id="8fdefb0e-a8c9-47be-9598-17bac58a4d25" />
+    <Project Path="src/KitchenService/KitchenService.csproj" Id="592d052d-5a1b-448d-b94e-51481d33fbd7" />
+  </Folder>
+  <Folder Name="/MCPServers/">
+    <Project Path="src/ProductCatalogService/ProductCatalogService.csproj" Id="06976d3a-1bcf-4fcc-8131-43ea53d95298" />
+  </Folder>
+  <Folder Name="/Web/">
+    <Project Path="src/ChatApp/ChatApp.csproj" />
+  </Folder>
+  <Folder Name="/__Solution Items/">
     <File Path=".editorconfig" />
     <File Path=".gitignore" />
     <File Path="app.http" />
@@ -9,13 +23,11 @@
     <File Path="nuget.config" />
     <File Path="README.md" />
   </Folder>
+  <Folder Name="/__Tests/">
+    <Project Path="tests/ServiceDefaults.Tests/ServiceDefaults.Tests.csproj" Id="12345678-1234-5678-9abc-def012345678" />
+    <Project Path="tests/CounterService.Tests/CounterService.Tests.csproj" Id="87654321-4321-8765-cba9-fed087654321" />
+    <Project Path="tests/SamplesIntegrationTests/SamplesIntegrationTests.csproj" Id="11111111-2222-3333-4444-555555555555" />
+  </Folder>
   <Project Path="src/AppHost/AppHost.csproj" Id="6fa56cf5-357b-4533-bc94-b440599d677c" />
-  <Project Path="src/BaristaService/BaristaService.csproj" Id="9a445033-1195-4525-b759-c6d327db8eed" />
-  <Project Path="src/CounterService/CounterService.csproj" Id="8fdefb0e-a8c9-47be-9598-17bac58a4d25" />
-  <Project Path="src/KitchenService/KitchenService.csproj" Id="592d052d-5a1b-448d-b94e-51481d33fbd7" />
-  <Project Path="src/ProductCatalogService/ProductCatalogService.csproj" Id="06976d3a-1bcf-4fcc-8131-43ea53d95298" />
   <Project Path="src/ServiceDefaults/ServiceDefaults.csproj" Id="c2e4647f-53d9-4571-978d-af77987d95fa" />
-  <Project Path="tests/ServiceDefaults.Tests/ServiceDefaults.Tests.csproj" Id="12345678-1234-5678-9abc-def012345678" />
-  <Project Path="tests/CounterService.Tests/CounterService.Tests.csproj" Id="87654321-4321-8765-cba9-fed087654321" />
-  <Project Path="tests/SamplesIntegrationTests/SamplesIntegrationTests.csproj" Id="11111111-2222-3333-4444-555555555555" />
 </Solution>
