@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BaristaService\BaristaService.csproj" />
+    <ProjectReference Include="..\ChatApp\ChatApp.csproj" />
     <ProjectReference Include="..\CounterService\CounterService.csproj" />
     <ProjectReference Include="..\KitchenService\KitchenService.csproj" />
     <ProjectReference Include="..\ProductCatalogService\ProductCatalogService.csproj" />

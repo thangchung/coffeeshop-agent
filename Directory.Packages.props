@@ -7,6 +7,7 @@
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.4.2" />
     <PackageVersion Include="Aspire.Hosting.Redis" Version="9.4.2" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.7.25380.108" />
+    
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.8.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.4.1" />
     <PackageVersion Include="Microsoft.SemanticKernel.Agents.A2A" Version="1.64.0-alpha" />
@@ -24,7 +25,13 @@
     <PackageVersion Include="Microsoft.Identity.Web" Version="3.14.0" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.7.2" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
-    <!--<PackageVersion Include="A2A.AspNetCore" Version="0.1.0-preview.2" />-->
+    <PackageVersion Include="A2A.AspNetCore" Version="0.3.1-preview" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.3.0-preview.4" />
+  </ItemGroup>
+  <ItemGroup Label="Web">
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="9.8.0" />
+    <PackageVersion Include="System.Linq.Async" Version="6.0.1" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.61.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.SqliteVec" Version="1.61.0-preview" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,163 @@
+@page "/"
+@using System.ComponentModel
+@using A2A
+@using System.Net.ServerSentEvents
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.OpenIdConnect
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Nav
+@implements IDisposable
+@inject IHttpClientFactory HttpClientFactory
+@inject IHttpContextAccessor HttpContextAccessor
+@attribute [Authorize]
+
+<PageTitle>Smart CoffeeShop App</PageTitle>
+
+<div class="chat-container page-width">
+    <AuthorizeView>
+        <Authorized>
+            <span>@context.User.Identity?.Name</span>
+            <form action="/logout" method="post">
+                <button type="submit" class="nav-link btn btn-link text-dark">
+                    Logout
+                </button>
+            </form>
+        </Authorized>
+        <NotAuthorized>
+            <a href="login?redirectUri=/">Log in</a>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>
+
+<ChatHeader OnNewChat="@ResetConversationAsync" />
+
+<ChatMessageList Messages="@messages" InProgressMessage="@currentResponseMessage">
+</ChatMessageList>
+
+<div class="chat-container">
+    <ChatInput OnSend="@AddUserMessageAsync" @ref="@chatInput" />
+</div>
+
+@code {
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private const string SystemPrompt = @"
+        You are a forwarder.
+    ";
+
+    private readonly List<ChatMessage> messages = new();
+    private CancellationTokenSource? currentResponseCancellation;
+    private ChatMessage? currentResponseMessage;
+    private ChatInput? chatInput;
+
+    private async Task Submit()
+    {
+        await HttpContextAccessor?.HttpContext?.SignOutAsync(OpenIdConnectDefaults.AuthenticationScheme)!;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState == null)
+        {
+            return;
+        }
+
+        var authState = await AuthState;
+
+        messages.Add(new(ChatRole.System, SystemPrompt));
+    }
+
+    private async Task AddUserMessageAsync(ChatMessage userMessage)
+    {
+        CancelAnyCurrentResponse();
+
+        // Add the user message to the conversation
+        messages.Add(userMessage);
+        await chatInput!.FocusAsync();
+
+        // Stream and display a new response from the IChatClient
+        var responseText = new TextContent("");
+        currentResponseMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
+        currentResponseCancellation = new();
+
+        var httpClient = HttpClientFactory.CreateClient("CounterClient");
+        A2ACardResolver cardResolver = new A2ACardResolver(new Uri("http://localhost:5000"));
+        AgentCard agentCard = await cardResolver.GetAgentCardAsync();
+        A2AClient client = new A2AClient(new Uri(agentCard.Url), httpClient);
+
+        var msg = new AgentMessage
+        {
+            MessageId = $"msg-{Guid.NewGuid()}",
+            Role = MessageRole.User,
+            Parts = new List<Part>
+            {
+                new TextPart{ Text = userMessage.Text }
+            }
+        };
+
+        await foreach (SseItem<A2AEvent> sseItem in client.SendMessageStreamingAsync(new MessageSendParams { Message = msg }))
+        {
+            ChatResponseUpdate chatResponse = null;
+            switch (sseItem.Data)
+            {
+                case AgentTask agentTask:
+                    chatResponse = new ChatResponseUpdate(ChatRole.Assistant, ((TextPart)agentTask?.History[0]?.Parts[0]).Text ?? "");
+                    break;
+
+                case TaskStatusUpdateEvent taskStatusUpdateEvent:
+                    chatResponse = new ChatResponseUpdate(ChatRole.Assistant, taskStatusUpdateEvent.Status.Message.Parts[0].AsTextPart().Text);
+                    break;
+
+                case TaskArtifactUpdateEvent taskArtifactUpdateEvent:
+                    chatResponse = new ChatResponseUpdate(ChatRole.Assistant, taskArtifactUpdateEvent.Artifact.Parts[0].AsTextPart().Text);
+                    break;
+
+                default:
+                    break;
+            };
+
+            if (chatResponse is not null)
+            {
+                messages.AddMessages(chatResponse, filter: c => {
+                    // return c is not TextContent;
+                    return true;
+                });
+                responseText.Text += chatResponse.Text;
+                ChatMessageItem.NotifyChanged(currentResponseMessage);
+                StateHasChanged();
+            }
+        }
+
+        // Store the final response in the conversation, and begin getting suggestions
+        messages.Add(currentResponseMessage!);
+        currentResponseMessage = null;
+    }
+
+    private void CancelAnyCurrentResponse()
+    {
+        // If a response was cancelled while streaming, include it in the conversation so it's not lost
+        if (currentResponseMessage is not null)
+        {
+            messages.Add(currentResponseMessage);
+        }
+
+        currentResponseCancellation?.Cancel();
+        currentResponseMessage = null;
+    }
+
+    private async Task ResetConversationAsync()
+    {
+        CancelAnyCurrentResponse();
+        messages.Clear();
+        messages.Add(new(ChatRole.System, SystemPrompt));
+        await chatInput!.FocusAsync();
+    }
+
+    public void Dispose()
+    {
+        currentResponseCancellation?.Cancel();
+    }
+}

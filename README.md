@@ -4,86 +4,85 @@
 ## High level architecture
 
 ```mermaid
-flowchart LR
-  %% Top-level orchestration
-  subgraph AppHost["AppHost (Aspire)"]
-    AH1[Wires env & connection strings]
-  end
+graph TD
+    subgraph "Identity Provider"
+        EntraID[Microsoft Entra ID]
+    end
 
-  %% Identity
-  subgraph AAD["Azure AD (Microsoft.Identity.Web)"]
-    AAD1[Authorization/Token Issuer]
-  end
+    subgraph "User Interaction"
+        WebApp[ChatApp <br> - A2A Client]
+    end
 
-  %% LLM
-  subgraph LLM["LLM Provider"]
-    OAI[Azure OpenAI Chat Model]
-  end
+    subgraph "Orchestration"
+        AppHost
+    end
 
-  %% Counter Service
-  subgraph Counter["CounterService"]
-    C_TM[TaskManager]
-    C_AG[CounterAgent]
-    C_SK[Semantic Kernel\nChatCompletionAgent]
-    C_MCP[MCP Client - SSE]
-  end
+    subgraph "Backend Services"
+        Counter[CounterService <br> - A2A Server/Client, MCP Client]
+        Barista[BaristaService <br> - A2A Server]
+        Kitchen[KitchenService <br> - A2A Server]
+        ProductCatalog[ProductCatalogService <br> - MCP Server]
+    end
 
-  %% Product Catalog Service
-  subgraph Product["ProductCatalogService"]
-    P_MCP[MCP Server /mcp]
-    P_TOOLS[McpTools + McpResources]
-  end
+    subgraph "Shared Infrastructure"
+        ServiceDefaults
+    end
 
-  %% Barista Service
-  subgraph Barista["BaristaService"]
-    B_TM[TaskManager]
-    B_AG[BaristaAgent]
-  end
+    %% Core Interactions
+    WebApp -- "A2A Protocol" --> Counter
+    Counter -- "A2A Protocol" --> Barista
+    Counter -- "A2A Protocol" --> Kitchen
+    Counter -- "MCP Protocol" --> ProductCatalog
 
-  %% Kitchen Service
-  subgraph Kitchen["KitchenService"]
-    K_TM[TaskManager]
-    K_AG[KitchenAgent]
-  end
+    %% Authentication & Authorization
+    EntraID -- "Secures" --> WebApp
+    EntraID -- "Secures" --> Counter
+    EntraID -- "Secures" --> Barista
+    EntraID -- "Secures" --> Kitchen
+    EntraID -- "Secures" --> ProductCatalog
 
-  %% Client entry
-  Client[Client/UI or External Agent]
+    %% Development-time Orchestration
+    AppHost -.-> WebApp
+    AppHost -.-> Counter
+    AppHost -.-> Barista
+    AppHost -.-> Kitchen
+    AppHost -.-> ProductCatalog
+    
+    %% Shared Dependencies
+    WebApp -- "Uses" --> ServiceDefaults
+    Counter -- "Uses" --> ServiceDefaults
+    Barista -- "Uses" --> ServiceDefaults
+    Kitchen -- "Uses" --> ServiceDefaults
+    ProductCatalog -- "Uses" --> ServiceDefaults
 
-  %% AppHost wiring
-  AH1 --> Counter
-  AH1 --> Barista
-  AH1 --> Kitchen
-  AH1 --> Product
-  AH1 -. connection strings .-> C_SK
-  AH1 -. env (AzureAd:*) .-> AAD1
+    %% Styling
+    classDef user fill:#D9EAD3,stroke:#333,stroke-width:2px;
+    classDef backend fill:#FCE5CD,stroke:#333,stroke-width:2px;
+    classDef orchestrator fill:#D0E0E3,stroke:#333,stroke-width:2px;
+    classDef shared fill:#EAD1DC,stroke:#333,stroke-width:2px;
+    classDef identity fill:#FFF2CC,stroke:#333,stroke-width:2px;
 
-  %% Attach patterns inside services
-  C_TM <-. Attach .-> C_AG
-  B_TM <-. Attach .-> B_AG
-  K_TM <-. Attach .-> K_AG
-  P_MCP --> P_TOOLS
+    class WebApp user;
+    class Counter,Barista,Kitchen,ProductCatalog backend;
+    class AppHost orchestrator;
+    class ServiceDefaults shared;
+    class EntraID identity;
+```
 
-  %% Entry into Counter (A2A)
-  Client -->|A2A JSON-RPC over HTTP\nscope: CoffeeShop.Counter.ReadWrite| C_TM
+## Get starting
 
-  %% Counter auth on-behalf-of
-  C_AG -->|TokenAcquisition - OBO| AAD1
+```
+dotnet run
+```
 
-  %% Counter -> Product via MCP
-  C_AG -->|MCP SSE /mcp\nBearer: CoffeeShop.Mcp.Product.ReadWrite| P_MCP
-  C_MCP --- C_AG
+Access to .NET Aspire dashboard, then open the web, and from the chat box type:
 
-  %% Counter -> LLM for classification
-  C_SK -->|ChatCompletion| OAI
-  C_AG --- C_SK
+```
+a black coffee pls
+```
 
-  %% Counter -> Barista/Kitchen via A2A
-  C_AG -->|A2A SendMessage\nBearer: CoffeeShop.Barista.ReadWrite| B_TM
-  C_AG -->|A2A SendMessage\nBearer: CoffeeShop.Kitchen.ReadWrite| K_TM
-
-  %% Barista/Kitchen internals
-  B_AG --> B_TM
-  K_AG --> K_TM
+```
+I want a black coffee, cappuccino, latte, 2 chicken meat balls and 2 cake pops.
 ```
 
 ## MCP
@@ -121,3 +120,4 @@ http://localhost:5000/.well-known/agent.json
 - https://github.com/thangchung/mcp-labs/blob/feat/a2a_mcp_auth/a2a_mcp_auth_dotnet
 - https://devblogs.microsoft.com/foundry/building-ai-agents-a2a-dotnet-sdk/
 - https://devblogs.microsoft.com/dotnet/build-a-model-context-protocol-mcp-server-in-csharp/
+- https://devblogs.microsoft.com/dotnet/announcing-dotnet-ai-template-preview1/

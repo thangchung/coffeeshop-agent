@@ -38,4 +38,12 @@ counter.WithReference(endpoint);
 counter.WithReference(apiKey);
 counter.WithReference(cache).WaitFor(cache);
 
+builder.AddProject<Projects.ChatApp>("web")
+    .WithEnvironment("AzureAd__Domain", builder.Configuration["AzureAd:Domain"])
+    .WithEnvironment("AzureAd__Instance", builder.Configuration["AzureAd:Instance"])
+    .WithEnvironment("AzureAd__TenantId", builder.Configuration["AzureAd:TenantId"])
+    .WithEnvironment("AzureAd__ClientId", builder.Configuration["AzureAd:CounterClientId"])
+    .WithEnvironment("AzureAd__ClientSecret", builder.Configuration["AzureAd:CounterClientSecret"])
+    .WithReference(counter).WaitFor(counter);
+
 builder.Build().Run();
