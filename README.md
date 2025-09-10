@@ -1,6 +1,8 @@
 # coffeeshop-agent
 .NET Agents technologies
 
+![](./assets/demo_coffeeshop.drawio.png)
+
 ## High level architecture
 
 ```mermaid
