@@ -3,6 +3,8 @@
 
 ![](./assets/demo_coffeeshop.drawio.png)
 
+> This is a demonstration application. Certain scenarios presented may be unrealistic or not suitable for real-world use. Please do not replicate or deploy this in a production environment.
+
 ## High level architecture
 
 ```mermaid
@@ -56,13 +58,6 @@ graph TD
     Barista -- "Uses" --> ServiceDefaults
     Kitchen -- "Uses" --> ServiceDefaults
     ProductCatalog -- "Uses" --> ServiceDefaults
-
-    %% Styling
-    classDef user fill:#D9EAD3,stroke:#333,stroke-width:2px;
-    classDef backend fill:#FCE5CD,stroke:#333,stroke-width:2px;
-    classDef orchestrator fill:#D0E0E3,stroke:#333,stroke-width:2px;
-    classDef shared fill:#EAD1DC,stroke:#333,stroke-width:2px;
-    classDef identity fill:#FFF2CC,stroke:#333,stroke-width:2px;
 
     class WebApp user;
     class Counter,Barista,Kitchen,ProductCatalog backend;
