@@ -2,35 +2,37 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+    <DotNetSdk>10.0.0-rc.1.25451.107</DotNetSdk>
+    <AspireVersion>9.5.0</AspireVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.4.2" />
-    <PackageVersion Include="Aspire.Hosting.Redis" Version="9.4.2" />
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.7.25380.108" />
-    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.8.0" />
-    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.4.1" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Agents.A2A" Version="1.64.0-alpha" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Agents.Core" Version="1.64.0" />
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="$(AspireVersion)" />
+    <PackageVersion Include="Aspire.Hosting.Redis" Version="$(AspireVersion)" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="$(DotNetSdk)" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.9.0" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.5.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Agents.A2A" Version="1.65.0-alpha" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Agents.Core" Version="1.65.0" />
     <PackageVersion Include="Microsoft.SemanticKernel.Agents.OpenAI" Version="1.63.0-preview" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.64.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Ollama" Version="1.64.0-alpha" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Redis" Version="1.64.0-preview" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.65.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Ollama" Version="1.65.0-alpha" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Redis" Version="1.65.0-preview" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.12.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0-preview.7.25380.108" />
-    <PackageVersion Include="Microsoft.Identity.Web" Version="3.14.0" />
-    <PackageVersion Include="Scalar.AspNetCore" Version="2.8.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="$(DotNetSdk)" />
+    <PackageVersion Include="Microsoft.Identity.Web" Version="3.14.1" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.8.7" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
     <PackageVersion Include="A2A.AspNetCore" Version="0.3.1-preview" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.3.0-preview.4" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.1" />
   </ItemGroup>
   <ItemGroup Label="Web">
-    <PackageVersion Include="Microsoft.Extensions.AI" Version="9.8.0" />
-    <PackageVersion Include="System.Linq.Async" Version="6.0.1" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.61.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.SqliteVec" Version="1.61.0-preview" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="9.9.1" />
+    <PackageVersion Include="System.Linq.Async" Version="6.0.3" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.65.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.SqliteVec" Version="1.65.0-preview" />
   </ItemGroup>
 </Project>

@@ -14,6 +14,8 @@ using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.ChatCompletion;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace CounterService.Agents;
 
@@ -99,7 +101,7 @@ public class CounterAgent(
             var scope = ((OAuth2SecurityScheme)agentCard.SecuritySchemes["root"]).Flows.AuthorizationCode.Scopes.FirstOrDefault().Key;
             activity?.SetTag($"downstream.{key.ToLower()}.agentCard.security_schema_scope", scope);
             string accessToken = await TokenAcquisition.GetAccessTokenForUserAsync([scope]);
-            
+
             httpClient.DefaultRequestHeaders.Clear();
             httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
             var client = new A2AClient(new Uri(agentCard.Url), httpClient);
@@ -435,7 +437,7 @@ public class CounterAgent(
         var medata = await DiscoverAuthServerMetadata(new Uri("https+http://product/"));
         var scope = medata.ScopesSupported.FirstOrDefault() ?? throw new AuthenticationException("Couldn't find scope for MCP server.");
 
-        IMcpClient? mcpClient = null;
+        McpClient? mcpClient = null;
         if (!isStub)
         {
             var accessToken = await TokenAcquisition.GetAccessTokenForUserAsync([scope]);
@@ -446,18 +448,18 @@ public class CounterAgent(
             httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
             httpClient.BaseAddress = new Uri("https+http://product/mcp");
 
-            var transport = new SseClientTransport(new()
+            var transport = new HttpClientTransport(new()
             {
                 Endpoint = new Uri("http://product/mcp"),// set anything with valid URI, because we override it with our own HttpClient
                 Name = "product-catalog-service"
             }, httpClient, ownsHttpClient: true);
 
             // Create MCP client using the official factory
-            mcpClient = await McpClientFactory.CreateAsync(transport, cancellationToken: cancellationToken);
+            mcpClient = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
 
-            var tools = await mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
+            var tools = await  mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
 
-            var productsResource = await mcpClient.ReadResourceAsync("data://products", cancellationToken: cancellationToken);
+            var productsResource = await mcpClient.ReadResourceAsync(new Uri("data://products"), cancellationToken: cancellationToken);
 
             var options = JsonSerializerOptions.Default;
             var exporterOptions = new JsonSchemaExporterOptions()
