@@ -6,23 +6,18 @@ using System.Text.Json.Schema;
 using System.Text.Json.Serialization;
 using A2A;
 using CounterService.Models;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.VectorData;
 using Microsoft.Identity.Web;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Agents;
-using Microsoft.SemanticKernel.ChatCompletion;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
+using OpenAI;
+using OpenAI.Chat;
 
 namespace CounterService.Agents;
 
 public class CounterAgent(
-    Kernel kernel,
-    IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-    VectorStore vectorStore,
+    ChatClient chatClient,
     IConfiguration configuration,
     IHttpClientFactory httpClientFactory,
     IHttpContextAccessor httpContextAccessor,
@@ -30,12 +25,11 @@ public class CounterAgent(
     ILogger<CounterAgent> logger)
 {
     private ITaskManager? _taskManager;
-    public static readonly ActivitySource ActivitySource = new($"A2A.{nameof(CounterAgent)}", "1.0.0");
+    private const string AgentName = $"A2A.{nameof(CounterAgent)}";
+    public static readonly ActivitySource ActivitySource = new(AgentName, "1.0.0");
 
     public ILogger<CounterAgent> Logger { get; } = logger;
-    public Kernel Kernel { get; } = kernel;
-    public IEmbeddingGenerator<string, Embedding<float>> EmbeddingGenerator { get; } = embeddingGenerator;
-    public VectorStore VectorStore { get; } = vectorStore;
+    public ChatClient ChatClient { get; } = chatClient;
     public IConfiguration Configuration { get; } = configuration;
     public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory;
     public IHttpContextAccessor HttpContextAccessor { get; } = httpContextAccessor;
@@ -197,7 +191,7 @@ public class CounterAgent(
             // Send message via A2A protocol to Pong Service
             Logger.LogInformation("Sending A2A message to Pong Service for user: {UserEmail}", "todo@todo.com");
 
-            var a2aClients = await ParseInputMessage(Kernel, messageText, isStub: IsStubLLMResponse, cancellationToken: cancellationToken);
+            var a2aClients = await ParseInputMessage(messageText, isStub: IsStubLLMResponse, cancellationToken: cancellationToken);
             activity?.SetTag("a2a.clients.count", a2aClients.Count);
 
             Logger.LogInformation("Sending A2A message with authentication in HTTP headers");
@@ -399,13 +393,8 @@ public class CounterAgent(
         }
     }
 
-    private async Task<Dictionary<A2AClient, List<ItemTypeDto>>> ParseInputMessage(Kernel kernel, string messageText, bool isStub = false, CancellationToken cancellationToken = default)
+    private async Task<Dictionary<A2AClient, List<ItemTypeDto>>> ParseInputMessage(string messageText, bool isStub = false, CancellationToken cancellationToken = default)
     {
-        //if (!await MemoryStore.DoesCollectionExistAsync("semanticCache"))
-        //{
-        //    await MemoryStore.CreateCollectionAsync("semanticCache");
-        //}
-
         var messageClassified = !isStub ? string.Empty :
             """
             {
@@ -457,7 +446,7 @@ public class CounterAgent(
             // Create MCP client using the official factory
             mcpClient = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
 
-            var tools = await  mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
+            var mcpTools = await  mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
 
             var productsResource = await mcpClient.ReadResourceAsync(new Uri("data://products"), cancellationToken: cancellationToken);
 
@@ -552,27 +541,17 @@ public class CounterAgent(
             }
             """;
 
-            if (!kernel.Plugins.Contains("Tools"))
+            
+            AIAgent agent = ChatClient
+                .CreateAIAgent(instructions: instructions,
+                                tools: [.. mcpTools.Cast<AITool>()])
+                .AsBuilder()
+                .UseOpenTelemetry(sourceName: AgentName, configure: (cfg) => cfg.EnableSensitiveData = true)
+                .Build();
+
+            await foreach (var msg in agent.RunStreamingAsync(new Microsoft.Extensions.AI.ChatMessage(ChatRole.Assistant, messageText)))
             {
-                kernel.Plugins.AddFromFunctions("Tools", tools.Select(aiFunction => aiFunction.AsKernelFunction()));
-            }
-
-            var summaryAgent =
-               new ChatCompletionAgent()
-               {
-                   Name = "ClassificationAgent",
-                   Arguments = new KernelArguments(new PromptExecutionSettings()
-                   { FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(options: new() { RetainArgumentTypes = true }) }),
-                   Instructions = instructions,
-                   Kernel = kernel
-               };
-
-            var message = new ChatMessageContent(AuthorRole.User, messageText);
-
-
-            await foreach (var msg in summaryAgent.InvokeAsync(message, cancellationToken: cancellationToken))
-            {
-                messageClassified += msg.Message?.Content;
+                messageClassified += msg.Text;
             }
         }
 

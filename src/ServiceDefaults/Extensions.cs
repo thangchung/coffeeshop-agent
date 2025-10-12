@@ -56,7 +56,8 @@ namespace Microsoft.Extensions.Hosting
                 {
                     metrics.AddAspNetCoreInstrumentation()
                         .AddHttpClientInstrumentation()
-                        .AddRuntimeInstrumentation();
+                        .AddRuntimeInstrumentation()
+                        .AddMeter("*Microsoft.Agents.AI");
                 })
                 .WithTracing(tracing =>
                 {
@@ -66,8 +67,8 @@ namespace Microsoft.Extensions.Hosting
                         .AddSource("A2A.KitchenAgent")
                         .AddSource("A2A.TaskManager")
                         .AddSource("A2A.Processor")
-                        .AddSource("Microsoft.SemanticKernel")
-                        .AddSource("Microsoft.SemanticKernel.Diagnostics")
+                        .AddSource("*Microsoft.Extensions.AI")
+                        .AddSource("*Microsoft.Extensions.Agents*")
                         .AddSource("Experimental.ModelContextProtocol")
                         //.AddSource("*")
                         .AddAspNetCoreInstrumentation(tracing =>

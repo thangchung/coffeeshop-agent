@@ -4,21 +4,16 @@
     <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
     <DotNetSdk>10.0.0-rc.1.25451.107</DotNetSdk>
     <AspireVersion>9.5.0</AspireVersion>
+    <MafVersion>1.0.0-preview.251009.1</MafVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Aspire.Hosting.AppHost" Version="$(AspireVersion)" />
-    <PackageVersion Include="Aspire.Hosting.Redis" Version="$(AspireVersion)" />
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.5.1" />
+    <PackageVersion Include="Aspire.Hosting.Redis" Version="9.5.1" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="$(DotNetSdk)" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.9.0" />
-    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.5.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Agents.A2A" Version="1.65.0-alpha" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Agents.Core" Version="1.65.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Agents.OpenAI" Version="1.63.0-preview" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.65.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Ollama" Version="1.65.0-alpha" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.Redis" Version="1.65.0-preview" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.5.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.13.1" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.13.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.12.0" />
@@ -26,11 +21,19 @@
     <PackageVersion Include="Microsoft.Identity.Web" Version="3.14.1" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.8.7" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
+  </ItemGroup>
+  <ItemGroup Label="AI">
     <PackageVersion Include="A2A.AspNetCore" Version="0.3.1-preview" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.1" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.2" />
+  </ItemGroup>
+  <ItemGroup Label="MAF">
+    <PackageVersion Include="Azure.Identity" Version="1.17.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="9.9.1" />
+    <PackageVersion Include="Azure.AI.OpenAI" Version="2.5.0-beta.1" />
+    <PackageVersion Include="Microsoft.Agents.AI" Version="$(MafVersion)" />
+    <PackageVersion Include="Microsoft.Agents.AI.OpenAI" Version="$(MafVersion)" />
   </ItemGroup>
   <ItemGroup Label="Web">
-    <PackageVersion Include="Microsoft.Extensions.AI" Version="9.9.1" />
     <PackageVersion Include="System.Linq.Async" Version="6.0.3" />
     <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.65.0" />
     <PackageVersion Include="Microsoft.SemanticKernel.Connectors.SqliteVec" Version="1.65.0-preview" />

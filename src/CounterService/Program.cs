@@ -1,18 +1,16 @@
+using System.ClientModel;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Authentication;
 using System.Security.Claims;
 using A2A;
 using A2A.AspNetCore;
+using Azure.AI.OpenAI;
 using CounterService.Agents;
 using CounterService.AuthZ;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.VectorData;
 using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Logging;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.Redis;
-using Microsoft.SemanticKernel.Memory;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -67,40 +65,17 @@ builder.Services.AddScoped<ITaskManager>(provider =>
     var logger = provider.GetRequiredService<ILogger<CounterAgent>>();
     var httpContextAccessor = provider.GetRequiredService<IHttpContextAccessor>();
     var tokenAcquisition = provider.GetRequiredService<ITokenAcquisition>();
-    var kernel = provider.GetRequiredService<Kernel>();
-    var embeddingGenerator = provider.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
-    var vectorStore = provider.GetRequiredService<VectorStore>();
-    var agent = new CounterAgent(kernel, embeddingGenerator, vectorStore, builder.Configuration, clientFactory, httpContextAccessor, tokenAcquisition, logger);
+    var chatClient = new AzureOpenAIClient(
+              new Uri(endpoint),
+              new ApiKeyCredential(apiKey))
+                .GetChatClient(chatModelId);
+
+    var agent = new CounterAgent(chatClient, builder.Configuration, clientFactory, httpContextAccessor, tokenAcquisition, logger);
     agent.Attach(taskManager);
     return taskManager;
 });
 
 builder.Services.AddHttpContextAccessor();
-
-var uri = new Uri("http://localhost:11434");
-var httpClient = new HttpClient
-{
-    BaseAddress = uri
-};
-var kernelBuilder = builder.Services.AddKernel()
-    // .AddOllamaChatCompletion("gpt-oss:20b", httpClient);
-    //.AddOpenAIChatCompletion(
-    //    modelId: "openai/gpt-5-nano",
-    //    apiKey: apiKey,
-    //    endpoint: new Uri("https://models.github.ai/inference"));
-    .AddAzureOpenAIChatCompletion(chatModelId, endpoint, apiKey)
-    .AddAzureOpenAIEmbeddingGenerator(chatModelId, endpoint, apiKey);
-
-builder.Services.AddRedisVectorStore(builder.Configuration.GetConnectionString("cache")!, new() { StorageType = RedisStorageType.Json});
-
-kernelBuilder.Services.ConfigureHttpClientDefaults(c =>
-{
-    c.AddStandardResilienceHandler();
-    c.ConfigureHttpClient((sp, httpClient) =>
-    {
-        httpClient.Timeout = TimeSpan.FromMinutes(5); // Set timeout to 5 minutes
-    });
-});
 
 builder.Services.AddOpenApi();
 
