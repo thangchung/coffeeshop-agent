@@ -5,8 +5,8 @@ using System.Text.Json;
 using System.Text.Json.Schema;
 using System.Text.Json.Serialization;
 using A2A;
-using CounterService.Models;
 using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using Microsoft.Identity.Web;
 using ModelContextProtocol;
@@ -39,7 +39,7 @@ public class CounterAgent(
             { "BARISTA", "https+http://barista" },
             { "KITCHEN", "https+http://kitchen" }
     };
-    public Dictionary<string, A2AClient> A2AClients { get; set; } = [];
+    public Dictionary<string, AIAgent> A2AAIAgents { get; set; } = [];
     public string JwtToken { get; set; } = string.Empty;
     public bool IsStubLLMResponse { get; set; } = false;
 
@@ -98,11 +98,9 @@ public class CounterAgent(
 
             httpClient.DefaultRequestHeaders.Clear();
             httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
-            var client = new A2AClient(new Uri(agentCard.Url), httpClient);
-            Logger.LogDebug("Created A2A client for endpoint: {Endpoint}", $"{agentCard.Url}");
 
-            if (!A2AClients.ContainsKey(key))
-                A2AClients.Add(key, client);
+            var agent = await cardResolver.GetAIAgentAsync(httpClient, cancellationToken: cancellationToken);
+            A2AAIAgents.TryAdd(key, agent);
         }
 
         Logger.LogInformation("Task created with ID: {TaskId}", task.Id);
@@ -178,87 +176,64 @@ public class CounterAgent(
                 return;
             }
 
-            // Update task status to Working
-            await _taskManager.UpdateStatusAsync(
-                task.Id,
-                TaskState.Working,
-                new AgentMessage
-                {
-                    Parts = [new TextPart { Text = $"Processing ping message via A2A protocol: {messageText}" }]
-                },
-                cancellationToken: cancellationToken);
-
-            // Send message via A2A protocol to Pong Service
-            Logger.LogInformation("Sending A2A message to Pong Service for user: {UserEmail}", "todo@todo.com");
-
-            var a2aClients = await ParseInputMessage(messageText, isStub: IsStubLLMResponse, cancellationToken: cancellationToken);
-            activity?.SetTag("a2a.clients.count", a2aClients.Count);
-
             Logger.LogInformation("Sending A2A message with authentication in HTTP headers");
 
-            foreach (var (a2aClient, items) in a2aClients)
+            var chatAgent = await GetChatAgent(isStub: IsStubLLMResponse, cancellationToken: cancellationToken);
+
+            var start = new SplitExecutor(chatAgent!);
+            var baristaExecutor = new BaristaExecuter(A2AAIAgents["BARISTA"]);
+            var kitchenExecutor = new KitchenExecuter(A2AAIAgents["KITCHEN"]);
+            var aggregation = new AggregationExecutor();
+
+            var workflow = new WorkflowBuilder(start)
+                .AddFanOutEdge(start, targets: [baristaExecutor, kitchenExecutor])
+                .AddFanInEdge(aggregation, sources: [baristaExecutor, kitchenExecutor])
+                .WithOutputFrom(aggregation)
+                .Build();
+
+            // string mermaid = workflow.ToMermaidString();
+
+            await using StreamingRun run = await InProcessExecution.StreamAsync(workflow, messageText, cancellationToken: cancellationToken);
+            await foreach (WorkflowEvent evt in run.WatchStreamAsync(cancellationToken))
             {
-                // Create A2A message with minimal metadata (authentication is in HTTP headers now)
-                var a2aMessage = new AgentMessage
+                if(evt is BaristaOrderSplitted baristaOrderSplitted)
                 {
-                    Role = MessageRole.User,
-                    MessageId = Guid.NewGuid().ToString(),
-                    ContextId = Guid.NewGuid().ToString(),
-                    Parts = [new TextPart { Text = messageText }],
-                    Metadata = new Dictionary<string, JsonElement>
-                    {
-                        ["items"] = JsonSerializer.SerializeToElement(items),
-                        ["timestamp"] = JsonSerializer.SerializeToElement(DateTime.UtcNow.ToString("O"))
-                    }
-                };
-
-                // Create MessageSendParams for A2A protocol
-                var messageSendParams = new MessageSendParams
-                {
-                    Message = a2aMessage,
-                    Configuration = new MessageSendConfiguration
-                    {
-                        AcceptedOutputModes = ["text"],
-                        Blocking = true
-                    }
-                };
-
-                // Send message via A2A protocol with authenticated HTTP client
-                var a2aResponse = await a2aClient.SendMessageAsync(messageSendParams);
-                activity?.SetTag("a2a.response.type", a2aResponse?.GetType().Name ?? "null");
-                var response = MapResponseMessage(a2aResponse);
-
-                // Extract the response content in a readable format
-                string responseText;
-                if (response.Success)
-                {
-                    responseText = response.Message;
+                    await _taskManager.UpdateStatusAsync(
+                        task.Id,
+                        TaskState.Working,
+                        new AgentMessage
+                        {
+                            Parts = [new TextPart { Text = "Barista order sent." }]
+                        },
+                        cancellationToken: cancellationToken);
                 }
-                else
+                else if (evt is KitchenOrderSplitted kitchenOrderSplitted)
                 {
-                    responseText = $"A2A communication failed: {response.Message ?? "Unknown error"}";
+                    await _taskManager.UpdateStatusAsync(
+                        task.Id,
+                        TaskState.Working,
+                        new AgentMessage
+                        {
+                            Parts = [new TextPart { Text = "Kitchen order sent." }]
+                        },
+                        cancellationToken: cancellationToken);
                 }
+                else if (evt is WorkflowOutputEvent outputEvent)
+                {
+                    var msg = outputEvent;
 
-                // Return a clean, readable response
-                await _taskManager.ReturnArtifactAsync(
-                    task.Id,
-                    new Artifact
-                    {
-                        Parts = [new TextPart { Text = responseText }]
-                    },
-                    cancellationToken);
+                    // Complete the task
+                    await _taskManager.UpdateStatusAsync(
+                        task.Id,
+                        TaskState.Completed,
+                        new AgentMessage
+                        {
+                            Parts = [new TextPart { Text = msg?.Data?.ToString() ?? "Order is created." }]
+                        },
+                        final: true,
+                        cancellationToken: cancellationToken);
+                }
             }
-
-            // Complete the task
-            await _taskManager.UpdateStatusAsync(
-                task.Id,
-                TaskState.Completed,
-                new AgentMessage
-                {
-                    Parts = [new TextPart { Text = "The order is created." }]
-                },
-                final: true,
-                cancellationToken: cancellationToken);
 
             Logger.LogInformation("Task {TaskId} completed successfully", task.Id);
         }
@@ -307,7 +282,8 @@ public class CounterAgent(
                     Description = "Send messages via A2A protocol to Barista and Kitchen services with MCP integration to get price of each item."
                 }
             ],
-            SecuritySchemes = new() {
+            SecuritySchemes = new()
+            {
                 ["root"] = new OAuth2SecurityScheme(
                     new OAuthFlows
                     {
@@ -332,68 +308,7 @@ public class CounterAgent(
         });
     }
 
-    private A2AServiceResponse MapResponseMessage(A2AResponse response)
-    {
-        switch (response)
-        {
-            case AgentTask task:
-                {
-                    Logger.LogInformation("A2A task created successfully with ID: {TaskId}, Status: {TaskStatus}",
-                                    task.Id, task.Status.State.ToString());
-
-                    if (task.Status.State == TaskState.AuthRequired)
-                    {
-                        throw new AuthenticationException(task.Status.Message?.Parts[0]?.AsTextPart()?.Text ?? "error");
-                    }
-                    else
-                    {
-                        var msg = task.Status.Message?.Parts?.FirstOrDefault()?.AsTextPart().Text;
-                        return new A2AServiceResponse
-                        {
-                            Success = true,
-                            Message = msg ?? "task created",
-                            Data = new
-                            {
-                                TaskId = task.Id,
-                                Status = task.Status.State.ToString(),
-                                Response = task.Artifacts?.FirstOrDefault()?.Parts?.OfType<TextPart>()?.FirstOrDefault()?.Text ?? "Task created"
-                            }
-                        };
-                    }
-                }
-            case AgentMessage messageResponse:
-                {
-                    Logger.LogInformation("Received A2A message response");
-
-                    var responseText = messageResponse.Parts?.OfType<TextPart>()?.FirstOrDefault()?.Text ?? "No response content";
-
-                    return new A2AServiceResponse
-                    {
-                        Success = true,
-                        Message = "A2A message sent successfully",
-                        Data = new
-                        {
-                            Response = responseText,
-                            MessageId = messageResponse.MessageId
-                        }
-                    };
-                }
-
-            default:
-                {
-                    Logger.LogWarning("Unexpected A2A response type: {ResponseType}", response?.GetType().Name ?? "null");
-
-                    return new A2AServiceResponse
-                    {
-                        Success = false,
-                        Message = "Unexpected response type from A2A protocol",
-                        Error = $"Unknown response format: {response?.GetType().Name ?? "null"}"
-                    };
-                }
-        }
-    }
-
-    private async Task<Dictionary<A2AClient, List<ItemTypeDto>>> ParseInputMessage(string messageText, bool isStub = false, CancellationToken cancellationToken = default)
+    private async Task<AIAgent?> GetChatAgent(bool isStub = false, CancellationToken cancellationToken = default)
     {
         var messageClassified = !isStub ? string.Empty :
             """
@@ -427,6 +342,7 @@ public class CounterAgent(
         var scope = medata.ScopesSupported.FirstOrDefault() ?? throw new AuthenticationException("Couldn't find scope for MCP server.");
 
         McpClient? mcpClient = null;
+        AIAgent? agent = null;
         if (!isStub)
         {
             var accessToken = await TokenAcquisition.GetAccessTokenForUserAsync([scope]);
@@ -446,7 +362,7 @@ public class CounterAgent(
             // Create MCP client using the official factory
             mcpClient = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
 
-            var mcpTools = await  mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
+            var mcpTools = await mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
 
             var productsResource = await mcpClient.ReadResourceAsync(new Uri("data://products"), cancellationToken: cancellationToken);
 
@@ -541,42 +457,21 @@ public class CounterAgent(
             }
             """;
 
-            
-            AIAgent agent = ChatClient
+
+            agent = ChatClient
                 .CreateAIAgent(instructions: instructions,
                                 tools: [.. mcpTools.Cast<AITool>()])
                 .AsBuilder()
                 .UseOpenTelemetry(sourceName: AgentName, configure: (cfg) => cfg.EnableSensitiveData = true)
                 .Build();
-
-            await foreach (var msg in agent.RunStreamingAsync(new Microsoft.Extensions.AI.ChatMessage(ChatRole.Assistant, messageText)))
-            {
-                messageClassified += msg.Text;
-            }
-        }
-
-        var orders = JsonSerializer.Deserialize<OrderDto>(messageClassified, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            WriteIndented = true
-        });
-
-        Dictionary<A2AClient, List<ItemTypeDto>> selectedClients = [];
-
-        if (orders?.BaristaItems.Count > 0)
-        {
-            selectedClients.Add(A2AClients["BARISTA"], orders?.BaristaItems!);
-        }
-
-        if (orders?.KitchenItems.Count > 0)
-        {
-            selectedClients.Add(A2AClients["KITCHEN"], orders?.KitchenItems!);
         }
 
         if (mcpClient != null)
+#pragma warning disable CA1816 // Dispose methods should call SuppressFinalize
             GC.SuppressFinalize(mcpClient);
+#pragma warning restore CA1816 // Dispose methods should call SuppressFinalize
 
-        return selectedClients;
+        return agent;
     }
 
     public async Task<ProtectedResourceMetadata> DiscoverAuthServerMetadata(Uri authServerUri)
@@ -635,5 +530,99 @@ public class CounterAgent(
 
         [JsonPropertyName("bearer_methods_supported")]
         public string[] BearerMethodsSupported { get; set; }
+    }
+
+    public class BaristaOrderSplitted : WorkflowEvent
+    {
+        public List<ItemTypeDto> Items { get; set; } = [];
+    }
+
+    public class KitchenOrderSplitted : WorkflowEvent
+    {
+        public List<ItemTypeDto> Items { get; set; } = [];
+    }
+
+    public class CustomAgentResponse : WorkflowEvent
+    {
+        public required AgentRunResponse Response { get; set; }
+    }
+
+    public sealed class SplitExecutor(AIAgent agent) : Executor<string>(nameof(SplitExecutor))
+    {
+        public static readonly ActivitySource ActivitySource = new($"MAF.{nameof(SplitExecutor)}", "1.0.0");
+        private readonly AIAgent _agent = agent;
+
+        public override async ValueTask HandleAsync(string message, IWorkflowContext context, CancellationToken cancellationToken = default)
+        {
+            using var activity = ActivitySource.StartActivity("HandleAsync", ActivityKind.Server);
+
+            string messageClassified = string.Empty;
+            await foreach (var msg in _agent.RunStreamingAsync(new Microsoft.Extensions.AI.ChatMessage(ChatRole.Assistant, message), cancellationToken: cancellationToken))
+            {
+                messageClassified += msg.Text;
+            }
+
+            var orders = JsonSerializer.Deserialize<OrderDto>(messageClassified, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true
+            });
+
+            activity?.SetTag("SplitBaristaOrderComplete.send", orders?.BaristaItems.Count ?? 0);
+            await context.SendMessageAsync(new BaristaOrderSplitted() { Items = orders.BaristaItems }, cancellationToken: cancellationToken);
+            await context.AddEventAsync(new BaristaOrderSplitted(), cancellationToken);
+
+            activity?.SetTag("SplitKitchenOrderComplete.send", orders?.KitchenItems.Count ?? 0);
+            await context.SendMessageAsync(new KitchenOrderSplitted() { Items = orders.KitchenItems }, cancellationToken: cancellationToken);
+            await context.AddEventAsync(new KitchenOrderSplitted(), cancellationToken);
+
+            // Broadcast the turn token to kick off the agents.
+            await context.SendMessageAsync(new TurnToken(emitEvents: true), cancellationToken: cancellationToken);
+        }
+    }
+
+    public class BaristaExecuter(AIAgent agent) : Executor<BaristaOrderSplitted>(nameof(BaristaExecuter))
+    {
+        private readonly AIAgent _agent = agent;
+
+        public override async ValueTask HandleAsync(BaristaOrderSplitted message, IWorkflowContext context, CancellationToken cancellationToken = default)
+        {
+            var response = await _agent.RunAsync(new Microsoft.Extensions.AI.ChatMessage(ChatRole.User, JsonSerializer.Serialize(message.Items)), cancellationToken: cancellationToken);
+            await context.SendMessageAsync(new CustomAgentResponse { Response = response }, cancellationToken: cancellationToken);
+        }
+    }
+
+    public class KitchenExecuter(AIAgent agent) : Executor<KitchenOrderSplitted>(nameof(KitchenExecuter))
+    {
+        private readonly AIAgent _agent = agent;
+
+        public override async ValueTask HandleAsync(KitchenOrderSplitted message, IWorkflowContext context, CancellationToken cancellationToken = default)
+        {
+            var response = await _agent.RunAsync(new Microsoft.Extensions.AI.ChatMessage(ChatRole.User, JsonSerializer.Serialize(message.Items)), cancellationToken: cancellationToken);
+            await context.SendMessageAsync(new CustomAgentResponse { Response = response }, cancellationToken: cancellationToken);
+        }
+    }
+
+    private sealed class AggregationExecutor() : Executor<CustomAgentResponse>(nameof(AggregationExecutor))
+    {
+        public static readonly ActivitySource ActivitySource = new($"MAF.{nameof(AggregationExecutor)}", "1.0.0");
+        private readonly List<string> _messages = [];
+
+        public override async ValueTask HandleAsync(CustomAgentResponse message, IWorkflowContext context, CancellationToken cancellationToken = default)
+        {
+            using var activity = ActivitySource.StartActivity("HandleAsync", ActivityKind.Server);
+
+            if(message.Response.RawRepresentation is A2A.AgentTask task)
+            {
+                _messages.Add(task.Status.Message?.Parts?.LastOrDefault()?.AsTextPart()?.Text ?? "");
+            }
+
+            if (_messages.Count == 2)
+            {
+                activity?.SetTag("YieldOutputAsync.completed", true);
+
+                await context.YieldOutputAsync(_messages.Aggregate("", (x, y) => $"{x}, {y}"), cancellationToken);
+            }
+        }
     }
 }

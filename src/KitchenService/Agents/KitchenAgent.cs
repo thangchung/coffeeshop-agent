@@ -65,7 +65,7 @@ public class KitchenAgent(IHttpContextAccessor httpContextAccessor, IConfigurati
 
         try
         {
-            var items = task.History?.FirstOrDefault()?.Metadata?.GetValueOrDefault("items");
+            var items = task.History?.FirstOrDefault()?.Parts?.FirstOrDefault()?.AsTextPart().Text;
 
             // Complete the task
             await _taskManager.UpdateStatusAsync(
@@ -73,7 +73,7 @@ public class KitchenAgent(IHttpContextAccessor httpContextAccessor, IConfigurati
                 TaskState.Completed,
                 new AgentMessage
                 {
-                    Parts = [new TextPart { Text = $"{items!.Value} cooked." }]
+                    Parts = [new TextPart { Text = $"{items} cooked." }]
                 },
                 final: true,
                 cancellationToken: cancellationToken);

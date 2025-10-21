@@ -65,14 +65,15 @@ public class BaristaAgent(IHttpContextAccessor httpContextAccessor, IConfigurati
 
         try
         {
-            var items = task.History?.FirstOrDefault()?.Metadata?.GetValueOrDefault("items");
+            var items = task.History?.FirstOrDefault()?.Parts?.FirstOrDefault()?.AsTextPart().Text;
+
             // Complete the task
             await _taskManager.UpdateStatusAsync(
                 task.Id,
                 TaskState.Completed,
                 new AgentMessage
                 {
-                    Parts = [new TextPart { Text = $"{items!.Value} made." }]
+                    Parts = [new TextPart { Text = $"{items} made." }]
                 },
                 final: true,
                 cancellationToken: cancellationToken);
