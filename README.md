@@ -110,7 +110,9 @@ http://localhost:5000/.well-known/agent.json
 
 ```mermaid
 flowchart TD
-  SplitExecutor["SplitExecutor (Start)"];
+  ValidatorExecutor["ValidatorExecutor (Start)"];
+  SplitExecutor["SplitExecutor"];
+  HandleUncertainExecutor["HandleUncertainExecutor"];
   BaristaExecuter["BaristaExecuter"];
   KitchenExecuter["KitchenExecuter"];
   AggregationExecutor["AggregationExecutor"];
@@ -119,6 +121,8 @@ flowchart TD
   BaristaExecuter --> fan_in::AggregationExecutor::76F793D9;
   KitchenExecuter --> fan_in::AggregationExecutor::76F793D9;
   fan_in::AggregationExecutor::76F793D9 --> AggregationExecutor;
+  ValidatorExecutor --> SplitExecutor;
+  ValidatorExecutor --> HandleUncertainExecutor;
   SplitExecutor --> BaristaExecuter;
   SplitExecutor --> KitchenExecuter;
 ```

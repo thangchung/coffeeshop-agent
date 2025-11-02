@@ -28,6 +28,17 @@ public sealed class McpTools(ILogger<McpTools> logger)
     //    return response;
     //}
 
+    [McpServerTool, Description("Get list of item types.")]
+    public string GetItemTypes()
+    {
+        logger.LogInformation("[GetItemTypes] is called.");
+        return JsonSerializer.Serialize(StuffData.ItemTypeDtos, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true
+        });
+    }
+
     [McpServerTool, Description("Get list of price based on the list of item type.")]
     public string GetItemPrices(ItemType[] itemTypes)
     {

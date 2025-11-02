@@ -1,4 +1,7 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.Contracts;
+using System.Runtime.Serialization;
 using System.Security.Authentication;
 using System.Security.Claims;
 using System.Text.Json;
@@ -8,6 +11,8 @@ using A2A;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Validation;
 using Microsoft.Identity.Web;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
@@ -22,7 +27,7 @@ public class CounterAgent(
     IHttpClientFactory httpClientFactory,
     IHttpContextAccessor httpContextAccessor,
     ITokenAcquisition tokenAcquisition,
-    ILogger<CounterAgent> logger)
+    ILogger<CounterAgent> logger) : IDisposable
 {
     private ITaskManager? _taskManager;
     private const string AgentName = $"A2A.{nameof(CounterAgent)}";
@@ -30,6 +35,7 @@ public class CounterAgent(
 
     public ILogger<CounterAgent> Logger { get; } = logger;
     public ChatClient ChatClient { get; } = chatClient;
+    public McpClient? McpClient { get; private set; }
     public IConfiguration Configuration { get; } = configuration;
     public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory;
     public IHttpContextAccessor HttpContextAccessor { get; } = httpContextAccessor;
@@ -180,15 +186,21 @@ public class CounterAgent(
 
             var chatAgent = await GetChatAgent(isStub: IsStubLLMResponse, cancellationToken: cancellationToken);
 
+            var validator = new ValidatorExecutor(ChatClient, McpClient!);
             var start = new SplitExecutor(chatAgent!);
             var baristaExecutor = new BaristaExecuter(A2AAIAgents["BARISTA"]);
             var kitchenExecutor = new KitchenExecuter(A2AAIAgents["KITCHEN"]);
             var aggregation = new AggregationExecutor();
+            var uncertainHandler = new HandleUncertainExecutor();
 
-            var workflow = new WorkflowBuilder(start)
+            var workflow = new WorkflowBuilder(validator)
+                .AddSwitch(validator, switchBuilder => switchBuilder
+                    .AddCase(GetValidCondition(true), start)
+                    .AddCase(GetValidCondition(false), uncertainHandler)
+                )
                 .AddFanOutEdge(start, targets: [baristaExecutor, kitchenExecutor])
                 .AddFanInEdge(aggregation, sources: [baristaExecutor, kitchenExecutor])
-                .WithOutputFrom(aggregation)
+                .WithOutputFrom(aggregation, uncertainHandler)
                 .Build();
 
             // string mermaid = workflow.ToMermaidString();
@@ -252,6 +264,8 @@ public class CounterAgent(
                 cancellationToken: cancellationToken);
         }
     }
+
+    private static Func<object?, bool> GetValidCondition(bool valid) => detectionResult => detectionResult is ValidResponse res && res.Valid == valid;
 
     private Task<AgentCard> GetAgentCardAsync(string agentUrl, CancellationToken cancellationToken)
     {
@@ -341,7 +355,6 @@ public class CounterAgent(
         var medata = await DiscoverAuthServerMetadata(new Uri("https+http://product/"));
         var scope = medata.ScopesSupported.FirstOrDefault() ?? throw new AuthenticationException("Couldn't find scope for MCP server.");
 
-        McpClient? mcpClient = null;
         AIAgent? agent = null;
         if (!isStub)
         {
@@ -360,11 +373,11 @@ public class CounterAgent(
             }, httpClient, ownsHttpClient: true);
 
             // Create MCP client using the official factory
-            mcpClient = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
+            McpClient = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
 
-            var mcpTools = await mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
+            var mcpTools = await McpClient.ListToolsAsync(cancellationToken: cancellationToken);
 
-            var productsResource = await mcpClient.ReadResourceAsync(new Uri("data://products"), cancellationToken: cancellationToken);
+            var productsResource = await McpClient.ReadResourceAsync(new Uri("data://products"), cancellationToken: cancellationToken);
 
             var options = JsonSerializerOptions.Default;
             var exporterOptions = new JsonSchemaExporterOptions()
@@ -466,11 +479,6 @@ public class CounterAgent(
                 .Build();
         }
 
-        if (mcpClient != null)
-#pragma warning disable CA1816 // Dispose methods should call SuppressFinalize
-            GC.SuppressFinalize(mcpClient);
-#pragma warning restore CA1816 // Dispose methods should call SuppressFinalize
-
         return agent;
     }
 
@@ -483,6 +491,14 @@ public class CounterAgent(
         var jsonResponse = await httpClient.GetStringAsync(metadataEndpoint);
         var metadata = JsonSerializer.Deserialize<ProtectedResourceMetadata>(jsonResponse);
         return metadata;
+    }
+
+    public void Dispose()
+    {
+        if (McpClient != null)
+#pragma warning disable CA1816 // Dispose methods should call SuppressFinalize
+            GC.SuppressFinalize(McpClient);
+#pragma warning restore CA1816 // Dispose methods should call SuppressFinalize
     }
 
     public enum ItemType
@@ -547,17 +563,86 @@ public class CounterAgent(
         public required AgentRunResponse Response { get; set; }
     }
 
-    public sealed class SplitExecutor(AIAgent agent) : Executor<string>(nameof(SplitExecutor))
+    public class ValidResponse
+    {
+        public string Query { get; set; } = default!;
+        public required bool Valid { get; set; } = false;
+    }
+
+    public sealed class ValidatorExecutor(ChatClient chatClient, McpClient mcpClient) : Executor<string, ValidResponse>(nameof(ValidatorExecutor))
+    {
+        public static readonly ActivitySource ActivitySource = new($"MAF.{nameof(ValidatorExecutor)}", "1.0.0");
+
+        public override async ValueTask<ValidResponse> HandleAsync(string message, IWorkflowContext context, CancellationToken cancellationToken = default)
+        {
+            using var activity = ActivitySource.StartActivity("HandleAsync", ActivityKind.Server);
+
+            var instructions = $$"""
+            You are a validator that checks if customer orders contain valid items.
+
+            Use your tool (GetItemTypes) to check if the customer order contains valid items from our inventory.
+
+            IMPORTANT: You must respond with ONLY valid JSON in this exact format. Do not include any additional text, explanations, or markdown formatting:
+
+               If any item is not valid: { "valid": false }
+               If all items are valid: { "valid": true }
+
+               Examples of CORRECT responses:
+                  { "valid": true }
+                  { "valid": false }
+
+               Do NOT respond with anything else. No explanations, no additional text, just the JSON object.
+            """;
+
+            var mcpTools = await mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
+
+            var agent = chatClient
+              .CreateAIAgent(instructions: instructions, tools: [.. mcpTools.Cast<AITool>()])
+                    .AsBuilder()
+                    .UseOpenTelemetry(sourceName: AgentName, configure: (cfg) => cfg.EnableSensitiveData = true)
+                    .Build();
+
+            var updates = agent.RunStreamingAsync(new Microsoft.Extensions.AI.ChatMessage(ChatRole.User, message), cancellationToken: cancellationToken);
+            var agentResponse = await updates.ToAgentRunResponseAsync(cancellationToken: cancellationToken);
+
+            ValidResponse? response;
+            try
+            {
+                response = JsonSerializer.Deserialize<ValidResponse>(agentResponse.Text, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    PropertyNameCaseInsensitive = true,
+                    Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+                });
+            }
+            catch (JsonException ex)
+            {
+                activity?.SetTag("ValidatorExecutor.json_error", ex.Message);
+                activity?.SetTag("ValidatorExecutor.response_text", agentResponse.Text);
+
+                // Fallback: assume invalid if we can't parse the response
+                response = new ValidResponse { Valid = false };
+            }
+
+            activity?.SetTag("ValidatorExecutor.validated", response?.Valid ?? false);
+
+            response.Query = message;
+
+            return response;
+        }
+    }
+
+    public sealed class SplitExecutor(AIAgent agent) : Executor<ValidResponse>(nameof(SplitExecutor))
     {
         public static readonly ActivitySource ActivitySource = new($"MAF.{nameof(SplitExecutor)}", "1.0.0");
         private readonly AIAgent _agent = agent;
 
-        public override async ValueTask HandleAsync(string message, IWorkflowContext context, CancellationToken cancellationToken = default)
+        public override async ValueTask HandleAsync(ValidResponse validResponse, IWorkflowContext context, CancellationToken cancellationToken = default)
         {
             using var activity = ActivitySource.StartActivity("HandleAsync", ActivityKind.Server);
 
             string messageClassified = string.Empty;
-            await foreach (var msg in _agent.RunStreamingAsync(new Microsoft.Extensions.AI.ChatMessage(ChatRole.Assistant, message), cancellationToken: cancellationToken))
+            await foreach (var msg in _agent.RunStreamingAsync(new Microsoft.Extensions.AI.ChatMessage(ChatRole.Assistant, validResponse.Query), cancellationToken: cancellationToken))
             {
                 messageClassified += msg.Text;
             }
@@ -623,6 +708,19 @@ public class CounterAgent(
 
                 await context.YieldOutputAsync(_messages.Aggregate("", (x, y) => $"{x}, {y}"), cancellationToken);
             }
+        }
+    }
+
+    private sealed class HandleUncertainExecutor() : Executor<ValidResponse>(nameof(HandleUncertainExecutor))
+    {
+        public static readonly ActivitySource ActivitySource = new($"MAF.{nameof(HandleUncertainExecutor)}", "1.0.0");
+        public override async ValueTask HandleAsync(ValidResponse validResponse, IWorkflowContext context, CancellationToken cancellationToken = default)
+        {
+            using var activity = ActivitySource.StartActivity("HandleAsync", ActivityKind.Server);
+            // Handle uncertain order here, e.g., send a message back to the user for clarification
+            var clarificationMessage = "Your order is unclear. Could you please clarify your order?";
+            activity?.SetTag("HandleUncertainExecutor.clarificationSent", true);
+            await context.YieldOutputAsync(clarificationMessage, cancellationToken);
         }
     }
 }
