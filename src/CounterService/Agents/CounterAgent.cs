@@ -1,18 +1,13 @@
-using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
-using System.Runtime.Serialization;
 using System.Security.Authentication;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Schema;
 using System.Text.Json.Serialization;
 using A2A;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Validation;
 using Microsoft.Identity.Web;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
@@ -48,6 +43,11 @@ public class CounterAgent(
     public Dictionary<string, AIAgent> A2AAIAgents { get; set; } = [];
     public string JwtToken { get; set; } = string.Empty;
     public bool IsStubLLMResponse { get; set; } = false;
+
+    private string SystemPrompt => """
+        You are a counter/staff member in the coffee shop, and only serve customers who order food and beverages.
+        If the customer asks for anything else, please politely refuse and tell them you only serve food and beverages.
+        """;
 
     public void Attach(ITaskManager taskManager)
     {
@@ -191,7 +191,7 @@ public class CounterAgent(
             var baristaExecutor = new BaristaExecuter(A2AAIAgents["BARISTA"]);
             var kitchenExecutor = new KitchenExecuter(A2AAIAgents["KITCHEN"]);
             var aggregation = new AggregationExecutor();
-            var uncertainHandler = new HandleUncertainExecutor();
+            var uncertainHandler = new HandleUncertainExecutor(McpClient!);
 
             var workflow = new WorkflowBuilder(validator)
                 .AddSwitch(validator, switchBuilder => switchBuilder
@@ -377,30 +377,16 @@ public class CounterAgent(
 
             var mcpTools = await McpClient.ListToolsAsync(cancellationToken: cancellationToken);
 
-            var productsResource = await McpClient.ReadResourceAsync(new Uri("data://products"), cancellationToken: cancellationToken);
-
-            var options = JsonSerializerOptions.Default;
-            var exporterOptions = new JsonSchemaExporterOptions()
-            {
-                TreatNullObliviousAsNonNullable = true,
-            };
-            var schema = options.GetJsonSchemaAsNode(typeof(OrderDto), exporterOptions);
             var instructions = $$"""
-            You are a counter/staff member in the coffee shop, and only serve customers who order food and beverages. If the customer asks for anything else, please politely refuse and tell them you only serve food and beverages.
+            {{SystemPrompt}}
 
-            Parse a customer's message into an order object in valid JSON (in the camel-case format).
             Use your tool to extract the name, price, and item type of the customer's message.
             Use your tool to query and get the valid price of the item (If you have a list of item types, then call to GetItemPrices tool at a priority.).
             The quantity of each item needs to be kept (if no quantity input from the user, then auto-set to 1).
-            Use the provided JSON schema for your reply (no markdown for formatting the JSON object needed):
-            {{schema}}
-
-            The itemType (products) should be one of the following values: {{productsResource.Contents[0].ToAIContent()}}, and if customers provide other value, please tell them the store doesn't have it and request them to change to the valid one.
 
             EXAMPLE 1:
             Customer's message: I want a black coffee and cappuccino.
             JSON Response:
-            ```
             {
                 "baristaItems": [
                     {
@@ -470,10 +456,21 @@ public class CounterAgent(
             }
             """;
 
+            JsonElement schema = AIJsonUtilities.CreateJsonSchema(typeof(OrderDto));
 
-            agent = ChatClient
-                .CreateAIAgent(instructions: instructions,
-                                tools: [.. mcpTools.Cast<AITool>()])
+            ChatOptions chatOptions = new()
+            {
+                ResponseFormat = Microsoft.Extensions.AI.ChatResponseFormat.ForJsonSchema(
+                schema: schema,
+                schemaName: "OrderDto",
+                schemaDescription: "Information about an order including list of items (ItemTypeDto). Each item includes ItemType, Name, Quantity, Price.")
+            };
+
+            agent = ChatClient.CreateAIAgent(
+                    new ChatClientAgentOptions(instructions: instructions, tools: [.. mcpTools.Cast<AITool>()])
+                    {
+                        ChatOptions = chatOptions,
+                    })
                 .AsBuilder()
                 .UseOpenTelemetry(sourceName: AgentName, configure: (cfg) => cfg.EnableSensitiveData = true)
                 .Build();
@@ -711,16 +708,82 @@ public class CounterAgent(
         }
     }
 
-    private sealed class HandleUncertainExecutor() : Executor<ValidResponse>(nameof(HandleUncertainExecutor))
+    private sealed class HandleUncertainExecutor(McpClient mcpClient) : Executor<ValidResponse>(nameof(HandleUncertainExecutor))
     {
         public static readonly ActivitySource ActivitySource = new($"MAF.{nameof(HandleUncertainExecutor)}", "1.0.0");
         public override async ValueTask HandleAsync(ValidResponse validResponse, IWorkflowContext context, CancellationToken cancellationToken = default)
         {
             using var activity = ActivitySource.StartActivity("HandleAsync", ActivityKind.Server);
+
+            var productsResource = await mcpClient.ReadResourceAsync(new Uri("data://products"), cancellationToken: cancellationToken);
+
             // Handle uncertain order here, e.g., send a message back to the user for clarification
-            var clarificationMessage = "Your order is unclear. Could you please clarify your order?";
+            var clarificationMessage = $"""
+                I'm sorry, but I couldn't understand your order clearly. 🤔
+
+                Could you please clarify what you'd like to order from our menu?
+
+                📋 Our Available Menu Items:
+
+                {FormatProductsAsMarkdown(productsResource.Contents?.FirstOrDefault()?.ToAIContent().ToString())}
+
+                **Please specify the items you'd like and their quantities.** For example:
+                - "I'd like 2 cappuccinos and 1 croissant chocolate"
+                - "Can I get a latte and a muffin?"
+
+                Thank you! ☕
+             """;
+
             activity?.SetTag("HandleUncertainExecutor.clarificationSent", true);
             await context.YieldOutputAsync(clarificationMessage, cancellationToken);
+        }
+
+        private static string FormatProductsAsMarkdown(string? productsJson)
+        {
+            if (string.IsNullOrEmpty(productsJson))
+                return "No products available.";
+
+            try
+            {
+                var products = JsonSerializer.Deserialize<List<ItemTypeDto>>(productsJson, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (products == null || products.Count == 0)
+                    return "No products available.";
+
+                var beverages = products.Where(p => (int)p.ItemType <= 5).OrderBy(p => p.Name);
+                var food = products.Where(p => (int)p.ItemType > 5).OrderBy(p => p.Name);
+
+                var markdown = new StringBuilder();
+
+                if (beverages.Any())
+                {
+                    markdown.AppendLine("Beverages:");
+                    foreach (var item in beverages)
+                    {
+                        markdown.AppendLine($"- **{item.Name}** - ${item.Price:F2}");
+                    }
+                    markdown.AppendLine();
+                }
+
+                if (food.Any())
+                {
+                    markdown.AppendLine("Food:");
+                    foreach (var item in food)
+                    {
+                        markdown.AppendLine($"- **{item.Name}** - ${item.Price:F2}");
+                    }
+                }
+
+                return markdown.AppendLine("\r\n\r\n\r\n").ToString().TrimEnd();
+            }
+            catch (JsonException)
+            {
+                return "Unable to parse product information.";
+            }
         }
     }
 }
