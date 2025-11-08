@@ -66,7 +66,7 @@ public partial class CounterChatAgent(
         ],
         "kitchenItems": []
     }
-    
+
     EXAMPLE 2:
     Customer's message: I want a black coffee, 2 cappuccino and 2 cakepops.
     JSON Response:
@@ -94,7 +94,7 @@ public partial class CounterChatAgent(
             }
         ]
     }
-    
+
     EXAMPLE 3:
     Customer's message: I want a croissant chocolate.
     JSON Response:
@@ -109,7 +109,7 @@ public partial class CounterChatAgent(
             }
         ]
     }
-    
+
     EXAMPLE 4:
     If you don't know how to parse the order object, respond with:
     {
@@ -217,7 +217,7 @@ public partial class CounterChatAgent(
             schemaDescription: "Information about an order including list of items (ItemTypeDto). Each item includes ItemType, Name, Quantity, Price.")
         };
 
-        var agent = ChatClient.CreateAIAgent(
+        var agent = chatClient.CreateAIAgent(
                 new ChatClientAgentOptions(instructions: SystemInstructionPrompt, tools: [.. mcpTools.Cast<AITool>()])
                 {
                     ChatOptions = chatOptions,
@@ -233,10 +233,12 @@ public partial class CounterChatAgent(
         var aggregation = new AggregationExecutor();
         var uncertainHandler = new HandleUncertainExecutor(mcpClient!);
 
+        var getValid = (bool valid) => (Func<object?, bool>)(detectionResult => detectionResult is ValidResponse res && res.Valid == valid);
+
         var workflow = new WorkflowBuilder(validator)
             .AddSwitch(validator, switchBuilder => switchBuilder
-                .AddCase(GetValidCondition(true), start)
-                .AddCase(GetValidCondition(false), uncertainHandler)
+                .AddCase(getValid(true), start)
+                .AddCase(getValid(false), uncertainHandler)
             )
             .AddFanOutEdge(start, [baristaExecutor, kitchenExecutor])
             .AddFanInEdge([baristaExecutor, kitchenExecutor], aggregation)
@@ -248,31 +250,94 @@ public partial class CounterChatAgent(
         return workflow;
     }
 
-    private void EnsureAuthentication(IHttpContextAccessor httpContextAccessor)
+    public static async Task<Workflow> BuildWorkflowAsync(IServiceProvider sp, string workflowName, CancellationToken cancellationToken)
     {
-        var httpContext = httpContextAccessor.HttpContext;
-        if (httpContext?.User?.Identity?.IsAuthenticated != true)
+        var chatClient = sp.GetRequiredService<ChatClient>();
+        var configuration = sp.GetRequiredService<IConfiguration>();
+        var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+        var httpContextAccessor = sp.GetRequiredService<IHttpContextAccessor>();
+        var tokenAcquisition = sp.GetRequiredService<ITokenAcquisition>();
+        var logger = sp.GetRequiredService<ILogger<CounterChatAgent>>();
+        var environment = sp.GetRequiredService<IHostEnvironment>();
+
+        // In development, skip authentication for DevUI; in production, require authentication
+        bool isDevelopment = environment.IsDevelopment();
+        bool hasAuthenticatedUser = httpContextAccessor.HttpContext?.User?.Identity?.IsAuthenticated == true;
+
+        McpClient? mcpClient = null;
+        List<AITool> mcpTools = new();
+
+        if (isDevelopment && !hasAuthenticatedUser)
         {
-            throw new AuthenticationException("User is not authenticated.");
+            // Development mode without authentication - skip MCP client initialization
+            logger.LogWarning("Running in Development mode without authentication. MCP tools will not be available.");
+        }
+        else
+        {
+            // Production mode or authenticated development session - use full authentication
+            mcpClient = await GetMcpClient(httpClientFactory, tokenAcquisition, CancellationToken.None);
+            var tools = await mcpClient!.ListToolsAsync(cancellationToken: CancellationToken.None);
+            mcpTools.AddRange(tools.Cast<AITool>());
         }
 
-        var authHeader = httpContext.Request.Headers["Authorization"].FirstOrDefault();
-        var jwtToken = string.Empty;
-        if (authHeader != null && authHeader.StartsWith("Bearer "))
+        AIAgent? a2aBaristaAIAgent = null;
+        AIAgent? a2aKitchenAIAgent = null;
+
+        if (isDevelopment && !hasAuthenticatedUser)
         {
-            jwtToken = authHeader.Substring("Bearer ".Length).Trim();
+            // Development mode without authentication - skip A2A client initialization
+            logger.LogWarning("Running in Development mode without authentication. A2A agents will not be available.");
+        }
+        else
+        {
+            // Production mode or authenticated development session - use full authentication
+            (a2aBaristaAIAgent, a2aKitchenAIAgent) = await ResolveA2AClients(httpClientFactory, tokenAcquisition, CancellationToken.None);
         }
 
-        var role = httpContext.User.FindFirst(ClaimTypes.Role)?.Value;
-        if (string.IsNullOrEmpty(jwtToken) || string.IsNullOrEmpty(role) || role?.ToLowerInvariant() is not "admin")
+        var schema = AIJsonUtilities.CreateJsonSchema(typeof(OrderDto));
+        var chatOptions = new ChatOptions()
         {
-            throw new AuthenticationException("JWT token: missing or Role: admin is required.");
-        }
+            ResponseFormat = Microsoft.Extensions.AI.ChatResponseFormat.ForJsonSchema(
+            schema: schema,
+            schemaName: "OrderDto",
+            schemaDescription: "Information about an order including list of items (ItemTypeDto). Each item includes ItemType, Name, Quantity, Price.")
+        };
+
+        var agent = chatClient.CreateAIAgent(
+                new ChatClientAgentOptions(instructions: SystemInstructionPrompt, tools: [.. mcpTools])
+                {
+                    ChatOptions = chatOptions,
+                })
+            .AsBuilder()
+            .UseOpenTelemetry(sourceName: AgentName, configure: (cfg) => cfg.EnableSensitiveData = true)
+            .Build();
+
+        var validator = new ValidatorExecutor(chatClient, mcpClient!);
+        var start = new SplitExecutor(agent!);
+        var baristaExecutor = new BaristaExecuter(a2aBaristaAIAgent!);
+        var kitchenExecutor = new KitchenExecuter(a2aKitchenAIAgent!);
+        var aggregation = new AggregationExecutor();
+        var uncertainHandler = new HandleUncertainExecutor(mcpClient!);
+
+        var getValid = (bool valid) => (Func<object?, bool>)(detectionResult => detectionResult is ValidResponse res && res.Valid == valid);
+
+        var workflow = new WorkflowBuilder(validator)
+            .WithName(workflowName)
+            .AddSwitch(validator, switchBuilder => switchBuilder
+                .AddCase(getValid(true), start)
+                .AddCase(getValid(false), uncertainHandler)
+            )
+            .AddFanOutEdge(start, [baristaExecutor, kitchenExecutor])
+            .AddFanInEdge([baristaExecutor, kitchenExecutor], aggregation)
+            .WithOutputFrom(aggregation, uncertainHandler)
+            .Build();
+
+        return workflow;
     }
 
-    private async Task<McpClient?> GetMcpClient(IHttpClientFactory httpClientFactory, ITokenAcquisition tokenAcquisition, CancellationToken cancellationToken)
+    private static async Task<McpClient?> GetMcpClient(IHttpClientFactory httpClientFactory, ITokenAcquisition tokenAcquisition, CancellationToken cancellationToken)
     {
-        var medata = await DiscoverAuthServerMetadata(new Uri("https+http://product/"));
+        var medata = await DiscoverAuthServerMetadata(httpClientFactory, new Uri("https+http://product/"));
         var scope = medata.ScopesSupported.FirstOrDefault() ?? throw new AuthenticationException("Couldn't find scope for MCP server.");
 
         var accessToken = await tokenAcquisition.GetAccessTokenForUserAsync([scope]);
@@ -331,17 +396,37 @@ public partial class CounterChatAgent(
         return (a2aAgents[0], a2aAgents[1]);
     }
 
-    private static Func<object?, bool> GetValidCondition(bool valid) => detectionResult => detectionResult is ValidResponse res && res.Valid == valid;
-
-    public async Task<ProtectedResourceMetadata> DiscoverAuthServerMetadata(Uri authServerUri)
+    private static async Task<ProtectedResourceMetadata> DiscoverAuthServerMetadata(IHttpClientFactory httpClientFactory, Uri authServerUri)
     {
         var metadataEndpoint = ".well-known/oauth-protected-resource";
-        using var httpClient = HttpClientFactory.CreateClient();
+        using var httpClient = httpClientFactory.CreateClient();
         httpClient.BaseAddress = authServerUri;
 
         var jsonResponse = await httpClient.GetStringAsync(metadataEndpoint);
         var metadata = JsonSerializer.Deserialize<ProtectedResourceMetadata>(jsonResponse);
-        return metadata;
+        return metadata!;
+    }
+
+    private void EnsureAuthentication(IHttpContextAccessor httpContextAccessor)
+    {
+        var httpContext = httpContextAccessor.HttpContext;
+        if (httpContext?.User?.Identity?.IsAuthenticated != true)
+        {
+            throw new AuthenticationException("User is not authenticated.");
+        }
+
+        var authHeader = httpContext.Request.Headers["Authorization"].FirstOrDefault();
+        var jwtToken = string.Empty;
+        if (authHeader != null && authHeader.StartsWith("Bearer "))
+        {
+            jwtToken = authHeader.Substring("Bearer ".Length).Trim();
+        }
+
+        var role = httpContext.User.FindFirst(ClaimTypes.Role)?.Value;
+        if (string.IsNullOrEmpty(jwtToken) || string.IsNullOrEmpty(role) || role?.ToLowerInvariant() is not "admin")
+        {
+            throw new AuthenticationException("JWT token: missing or Role: admin is required.");
+        }
     }
 
     public void Dispose()

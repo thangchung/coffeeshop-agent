@@ -69,41 +69,18 @@ builder.Services.AddAGUI();
 
 builder.Services.AddScoped<IAuthZService, StuffAuthZService>();
 
-//builder.AddWorkflow("order-workflow", async (sp, key) =>
-//{
-//    var provider = sp.GetRequiredService<IServiceProvider>();
-//    var agent = provider.GetService<CounterChatAgent>();
-//    var clientFactory = provider.GetRequiredService<IHttpClientFactory>();
-//    var logger = provider.GetRequiredService<ILogger<CounterChatAgent>>();
-//    var httpContextAccessor = provider.GetRequiredService<IHttpContextAccessor>();
-//    var tokenAcquisition = provider.GetRequiredService<ITokenAcquisition>();
+builder.AddWorkflow("order-workflow", (sp, key) =>
+{
+    using var scope = sp.CreateScope();
+    return CounterChatAgent.BuildWorkflowAsync(scope.ServiceProvider, key, CancellationToken.None).GetAwaiter().GetResult();
+}).AddAsAIAgent();
 
-//    var chatClient = new AzureOpenAIClient(
-//          new Uri(endpoint),
-//          new ApiKeyCredential(apiKey))
-//            .GetChatClient(chatModelId);
-
-//    var validator = new ValidatorExecutor(chatClient, null);
-//    var start = new SplitExecutor(agent!);
-//    var baristaExecutor = new BaristaExecuter(null);
-//    var kitchenExecutor = new KitchenExecuter(null);
-//    var aggregation = new AggregationExecutor();
-//    var uncertainHandler = new HandleUncertainExecutor(null!);
-
-//    var workflow = new WorkflowBuilder(validator)
-//        .AddSwitch(validator, switchBuilder => switchBuilder
-//            .AddCase(GetValidCondition(true), start)
-//            .AddCase(GetValidCondition(false), uncertainHandler)
-//        )
-//        .AddFanOutEdge(start, [baristaExecutor, kitchenExecutor])
-//        .AddFanInEdge([baristaExecutor, kitchenExecutor], aggregation)
-//        .WithOutputFrom(aggregation, uncertainHandler)
-//        .Build();
-
-//    Func<object?, bool> GetValidCondition(bool valid) => detectionResult => detectionResult is ValidResponse res && res.Valid == valid;
-
-//    return workflow;
-//}).AddAsAIAgent();
+// Register ChatClient for DevUI
+builder.Services.AddSingleton<ChatClient>(sp =>
+{
+    return new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(apiKey))
+        .GetChatClient(chatModelId);
+});
 
 // devui
 builder.Services.AddOpenAIResponses();
