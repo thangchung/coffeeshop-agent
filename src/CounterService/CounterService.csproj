@@ -13,6 +13,9 @@
         <PackageReference Include="Azure.Identity" />
         <PackageReference Include="Microsoft.Agents.AI" />
         <PackageReference Include="Microsoft.Agents.AI.A2A" />
+        <PackageReference Include="Microsoft.Agents.AI.AGUI" />
+        <PackageReference Include="Microsoft.Agents.AI.DevUI" />
+        <PackageReference Include="Microsoft.Agents.AI.Hosting.AGUI.AspNetCore" />
         <PackageReference Include="Microsoft.Agents.AI.OpenAI" />
         <PackageReference Include="Microsoft.Agents.AI.Workflows" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
