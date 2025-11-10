@@ -8,7 +8,11 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services
+var ignoreAuth = builder.Configuration.GetValue("IgnoreAuth", false);
+
+if (!ignoreAuth)
+{
+    builder.Services
     .AddAuthentication(options =>
     {
         options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -39,14 +43,15 @@ builder.Services
     },
     options => builder.Configuration.Bind("AzureAd", options));
 
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("ProductCatalogOnly", policy =>
+    builder.Services.AddAuthorization(options =>
     {
-        policy.RequireAuthenticatedUser();
-        policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Mcp.Product.ReadWrite");
+        options.AddPolicy("ProductCatalogOnly", policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Mcp.Product.ReadWrite");
+        });
     });
-});
+}
 
 builder.Services.AddMcpServer()
     .WithHttpTransport()
@@ -65,10 +70,20 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
+if (!ignoreAuth)
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
+}
 
-app.MapMcp("/mcp").RequireAuthorization("ProductCatalogOnly");
+if (!ignoreAuth)
+{
+    app.MapMcp("/mcp").RequireAuthorization("ProductCatalogOnly");
+}
+else
+{
+    app.MapMcp("/mcp");
+}
 
 app.MapDefaultEndpoints();
 

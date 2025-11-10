@@ -8,11 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.5.2" />
-    <PackageVersion Include="Aspire.Hosting.Redis" Version="9.5.2" />
-    <PackageVersion Include="Microsoft.Agents.AI.AGUI" Version="1.0.0-preview.251107.1" />
-    <PackageVersion Include="Microsoft.Agents.AI.DevUI" Version="1.0.0-preview.251107.1" />
-    <PackageVersion Include="Microsoft.Agents.AI.Hosting.AGUI.AspNetCore" Version="1.0.0-preview.251107.1" />
-    <PackageVersion Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.251107.1" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-rc.2.25502.107" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.10.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.5.2" />
@@ -37,6 +32,10 @@
     <PackageVersion Include="Microsoft.Agents.AI" Version="1.0.0-preview.251107.1" />
     <PackageVersion Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0-preview.251107.1" />
     <PackageVersion Include="Microsoft.Agents.AI.A2A" Version="1.0.0-preview.251107.1" />
+    <PackageVersion Include="Microsoft.Agents.AI.AGUI" Version="1.0.0-preview.251107.1" />
+    <PackageVersion Include="Microsoft.Agents.AI.DevUI" Version="1.0.0-preview.251107.1" />
+    <PackageVersion Include="Microsoft.Agents.AI.Hosting.AGUI.AspNetCore" Version="1.0.0-preview.251107.1" />
+    <PackageVersion Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.251107.1" />
   </ItemGroup>
   <ItemGroup Label="Web">
     <PackageVersion Include="System.Linq.Async" Version="6.0.3" />

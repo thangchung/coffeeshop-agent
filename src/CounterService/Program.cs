@@ -5,16 +5,13 @@ using System.Security.Claims;
 using Azure.AI.OpenAI;
 using CounterService.Agents;
 using CounterService.AuthZ;
-using CounterService.Workflows;
 using Microsoft.Agents.AI.DevUI;
 using Microsoft.Agents.AI.Hosting;
 using Microsoft.Agents.AI.Hosting.AGUI.AspNetCore;
-using Microsoft.Agents.AI.Workflows;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.AI;
 using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Logging;
-using ModelContextProtocol.Client;
 using OpenAI.Chat;
 using Scalar.AspNetCore;
 
@@ -38,41 +35,48 @@ if (string.IsNullOrEmpty(apiKey))
     throw new ArgumentNullException(nameof(apiKey), "The apiKey connection string cannot be null or empty.");
 }
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(options =>
-    {
-        builder.Configuration.Bind("AzureAd", options);
-
-        options.Events = new JwtBearerEvents
-        {
-            OnTokenValidated = CustomTokenValidated,
-            OnAuthenticationFailed = CustomAuthenticationFailed
-        };
-    }, options => builder.Configuration.Bind("AzureAd", options))
-    .EnableTokenAcquisitionToCallDownstreamApi(options => { })
-    .AddInMemoryTokenCaches();
-
-builder.Services.AddAuthorization(options =>
+var ignoreAuth = builder.Configuration.GetValue("IgnoreAuth", false);
+if (!ignoreAuth)
 {
-    options.AddPolicy("CounterOnly", policy =>
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddMicrosoftIdentityWebApi(options =>
+        {
+            builder.Configuration.Bind("AzureAd", options);
+
+            options.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = CustomTokenValidated,
+                OnAuthenticationFailed = CustomAuthenticationFailed
+            };
+        }, options => builder.Configuration.Bind("AzureAd", options))
+        .EnableTokenAcquisitionToCallDownstreamApi(options => { })
+        .AddInMemoryTokenCaches();
+
+    builder.Services.AddAuthorization(options =>
     {
-        policy.RequireAuthenticatedUser();
-        policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Counter.ReadWrite");
+        options.AddPolicy("CounterOnly", policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Counter.ReadWrite");
+        });
     });
-});
+}
 
 builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddOpenApi();
 
-builder.Services.AddAGUI();
+if (!ignoreAuth)
+{
+    builder.Services.AddAGUI();
 
-builder.Services.AddScoped<IAuthZService, StuffAuthZService>();
+    builder.Services.AddScoped<IAuthZService, StuffAuthZService>();
+}
 
 builder.AddWorkflow("order-workflow", (sp, key) =>
 {
     using var scope = sp.CreateScope();
-    return CounterChatAgent.BuildWorkflowAsync(scope.ServiceProvider, key, CancellationToken.None).GetAwaiter().GetResult();
+    return scope.ServiceProvider.BuildWorkflowForDevUI(key, CancellationToken.None).GetAwaiter().GetResult();
 }).AddAsAIAgent();
 
 // Register ChatClient for DevUI
@@ -98,26 +102,25 @@ if (app.Environment.IsDevelopment())
 
     app.MapOpenApi();
     app.MapScalarApiReference();
-    app.MapDevUI();
+
+    // Map OpenAI endpoints and DevUI (required for DevUI to work)
+    //app.MapOpenAIResponses();
+    //app.MapOpenAIConversations();
+
+    app.MapDevUI();  // This should automatically map /v1/entities endpoint
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
+if (!ignoreAuth)
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
 
-using var scope = app.Services.CreateAsyncScope();
-var provider = scope.ServiceProvider;
-var clientFactory = provider.GetRequiredService<IHttpClientFactory>();
-var logger = provider.GetRequiredService<ILogger<CounterChatAgent>>();
-var httpContextAccessor = provider.GetRequiredService<IHttpContextAccessor>();
-var tokenAcquisition = provider.GetRequiredService<ITokenAcquisition>();
-var chatClient = new AzureOpenAIClient(
-          new Uri(endpoint),
-          new ApiKeyCredential(apiKey))
-            .GetChatClient(chatModelId);
+    // Note: Don't use 'using' here - the agent needs to live for the application lifetime
+    // The scope will be disposed when the application shuts down
+    var agent = app.Services.BuildAIAgentForAGUI(endpoint, apiKey, chatModelId);
 
-var agent = new CounterChatAgent(chatClient, builder.Configuration, clientFactory, httpContextAccessor, tokenAcquisition, logger);
-
-app.MapAGUI("/", agent);
+    app.MapAGUI("/", agent);
+}
 
 app.MapDefaultEndpoints();
 
