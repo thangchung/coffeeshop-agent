@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.Json.Serialization;
 using ChatApp.Components;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;

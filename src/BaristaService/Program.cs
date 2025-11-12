@@ -8,27 +8,33 @@ using Microsoft.IdentityModel.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddMicrosoftIdentityWebApi(
-                options => {
-                    builder.Configuration.Bind("AzureAd", options);
+var ignoreAuth = builder.Configuration.GetValue("IgnoreAuth", false);
 
-                    options.Events = new JwtBearerEvents
-                    {
-                        OnTokenValidated = CustomTokenValidated,
-                        OnAuthenticationFailed = CustomAuthenticationFailed
-                    };
-                },
-                options => builder.Configuration.Bind("AzureAd", options));
-
-builder.Services.AddAuthorization(options =>
+if (!ignoreAuth)
 {
-    options.AddPolicy("BaristaOnly", policy =>
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddMicrosoftIdentityWebApi(
+                    options =>
+                    {
+                        builder.Configuration.Bind("AzureAd", options);
+
+                        options.Events = new JwtBearerEvents
+                        {
+                            OnTokenValidated = CustomTokenValidated,
+                            OnAuthenticationFailed = CustomAuthenticationFailed
+                        };
+                    },
+                    options => builder.Configuration.Bind("AzureAd", options));
+
+    builder.Services.AddAuthorization(options =>
     {
-        policy.RequireAuthenticatedUser();
-        policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Barista.ReadWrite");
+        options.AddPolicy("BaristaOnly", policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Barista.ReadWrite");
+        });
     });
-});
+}
 
 builder.Services.AddHttpContextAccessor();
 
@@ -53,15 +59,26 @@ if (app.Environment.IsDevelopment())
     IdentityModelEventSource.ShowPII = true;
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
+if (!ignoreAuth)
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
+}
 
 using var scope = app.Services.CreateAsyncScope();
 var taskManager = scope.ServiceProvider.GetRequiredService<ITaskManager>();
 
 // Map A2A endpoints
-app.MapA2A(taskManager, "/").RequireAuthorization("BaristaOnly");
-app.MapHttpA2A(taskManager, "/").RequireAuthorization("BaristaOnly");
+if (!ignoreAuth)
+{
+    app.MapA2A(taskManager, "/").RequireAuthorization("BaristaOnly");
+    app.MapHttpA2A(taskManager, "/").RequireAuthorization("BaristaOnly");
+}
+else
+{
+    app.MapA2A(taskManager, "/");
+    app.MapHttpA2A(taskManager, "/");
+}
 app.MapWellKnownAgentCard(taskManager, "/").AllowAnonymous();
 
 app.MapDefaultEndpoints();

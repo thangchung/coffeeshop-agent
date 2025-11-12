@@ -48,24 +48,24 @@ public class KitchenAgent(IHttpContextAccessor httpContextAccessor, IConfigurati
             throw new InvalidOperationException("TaskManager is not attached.");
         }
 
-        var httpContext = HttpContextAccessor.HttpContext;
-        if (httpContext?.User?.Identity?.IsAuthenticated != true)
-        {
-            await _taskManager.UpdateStatusAsync(
-                task.Id,
-                TaskState.AuthRequired,
-                new AgentMessage
-                {
-                    Parts = [new TextPart { Text = "User is not authenticated" }]
-                },
-                final: true,
-                cancellationToken: cancellationToken);
-            return;
-        }
+        //var httpContext = HttpContextAccessor.HttpContext;
+        //if (httpContext?.User?.Identity?.IsAuthenticated != true)
+        //{
+        //    await _taskManager.UpdateStatusAsync(
+        //        task.Id,
+        //        TaskState.AuthRequired,
+        //        new AgentMessage
+        //        {
+        //            Parts = [new TextPart { Text = "User is not authenticated" }]
+        //        },
+        //        final: true,
+        //        cancellationToken: cancellationToken);
+        //    return;
+        //}
 
         try
         {
-            var items = task.History?.FirstOrDefault()?.Metadata?.GetValueOrDefault("items");
+            var items = task.History?.FirstOrDefault()?.Parts?.FirstOrDefault()?.AsTextPart().Text;
 
             // Complete the task
             await _taskManager.UpdateStatusAsync(
@@ -73,7 +73,7 @@ public class KitchenAgent(IHttpContextAccessor httpContextAccessor, IConfigurati
                 TaskState.Completed,
                 new AgentMessage
                 {
-                    Parts = [new TextPart { Text = $"{items!.Value} cooked." }]
+                    Parts = [new TextPart { Text = $"{items} cooked." }]
                 },
                 final: true,
                 cancellationToken: cancellationToken);

@@ -1,23 +1,20 @@
+using System.ClientModel;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Authentication;
 using System.Security.Claims;
-using A2A;
-using A2A.AspNetCore;
+using Azure.AI.OpenAI;
 using CounterService.Agents;
 using CounterService.AuthZ;
+using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.DevUI;
+using Microsoft.Agents.AI.Hosting.AGUI.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.VectorData;
 using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Logging;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.Redis;
-using Microsoft.SemanticKernel.Memory;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
-
-AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiagnosticsSensitive", true);
 
 var chatModelId = builder.Configuration.GetConnectionString("chatModelId");
 if (string.IsNullOrEmpty(chatModelId))
@@ -37,99 +34,106 @@ if (string.IsNullOrEmpty(apiKey))
     throw new ArgumentNullException(nameof(apiKey), "The apiKey connection string cannot be null or empty.");
 }
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(options =>
-    {
-        builder.Configuration.Bind("AzureAd", options);
-
-        options.Events = new JwtBearerEvents
+var ignoreAuth = builder.Configuration.GetValue("IgnoreAuth", false);
+if (!ignoreAuth)
+{
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddMicrosoftIdentityWebApi(options =>
         {
-            OnTokenValidated = CustomTokenValidated,
-            OnAuthenticationFailed = CustomAuthenticationFailed
-        };
-    }, options => builder.Configuration.Bind("AzureAd", options))
-    .EnableTokenAcquisitionToCallDownstreamApi(options => { })
-    .AddInMemoryTokenCaches();
+            builder.Configuration.Bind("AzureAd", options);
 
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("CounterOnly", policy =>
+            options.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = CustomTokenValidated,
+                OnAuthenticationFailed = CustomAuthenticationFailed
+            };
+        }, options => builder.Configuration.Bind("AzureAd", options))
+        .EnableTokenAcquisitionToCallDownstreamApi(options => { })
+        .AddInMemoryTokenCaches();
+
+    builder.Services.AddAuthorization(options =>
     {
-        policy.RequireAuthenticatedUser();
-        policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Counter.ReadWrite");
+        options.AddPolicy("CounterOnly", policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireClaim(ClaimConstants.Scope, "CoffeeShop.Counter.ReadWrite");
+        });
     });
-});
-
-builder.Services.AddScoped<ITaskManager>(provider =>
-{
-    var taskManager = new TaskManager();
-    var clientFactory = provider.GetRequiredService<IHttpClientFactory>();
-    var logger = provider.GetRequiredService<ILogger<CounterAgent>>();
-    var httpContextAccessor = provider.GetRequiredService<IHttpContextAccessor>();
-    var tokenAcquisition = provider.GetRequiredService<ITokenAcquisition>();
-    var kernel = provider.GetRequiredService<Kernel>();
-    var embeddingGenerator = provider.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
-    var vectorStore = provider.GetRequiredService<VectorStore>();
-    var agent = new CounterAgent(kernel, embeddingGenerator, vectorStore, builder.Configuration, clientFactory, httpContextAccessor, tokenAcquisition, logger);
-    agent.Attach(taskManager);
-    return taskManager;
-});
+}
 
 builder.Services.AddHttpContextAccessor();
 
-var uri = new Uri("http://localhost:11434");
-var httpClient = new HttpClient
-{
-    BaseAddress = uri
-};
-var kernelBuilder = builder.Services.AddKernel()
-    // .AddOllamaChatCompletion("gpt-oss:20b", httpClient);
-    //.AddOpenAIChatCompletion(
-    //    modelId: "openai/gpt-5-nano",
-    //    apiKey: apiKey,
-    //    endpoint: new Uri("https://models.github.ai/inference"));
-    .AddAzureOpenAIChatCompletion(chatModelId, endpoint, apiKey)
-    .AddAzureOpenAIEmbeddingGenerator(chatModelId, endpoint, apiKey);
-
-builder.Services.AddRedisVectorStore(builder.Configuration.GetConnectionString("cache")!, new() { StorageType = RedisStorageType.Json});
-
-kernelBuilder.Services.ConfigureHttpClientDefaults(c =>
-{
-    c.AddStandardResilienceHandler();
-    c.ConfigureHttpClient((sp, httpClient) =>
-    {
-        httpClient.Timeout = TimeSpan.FromMinutes(5); // Set timeout to 5 minutes
-    });
-});
-
 builder.Services.AddOpenApi();
 
-builder.Services.AddScoped<IAuthZService, StuffAuthZService>();
+if (!ignoreAuth)
+{
+    builder.Services.AddAGUI();
+
+    builder.Services.AddScoped<IAuthZService, StuffAuthZService>();
+}
+
+//// Note: in AppHost->Program.cs turns `var ignoreAuth = true;`
+//builder.AddWorkflow("order-workflow", (sp, key) =>
+//{
+//    using var scope = sp.CreateScope();
+//    return scope.ServiceProvider.BuildWorkflowForDevUI(key, CancellationToken.None).GetAwaiter().GetResult();
+//});
+
+// DEMO: devui
+//var assistantBuilder = builder.AddAIAgent("workflow-assistant", "You are a helpful assistant in a workflow.");
+//var reviewerBuilder = builder.AddAIAgent("workflow-reviewer", "You are a reviewer. Review and critique the previous response.");
+//builder.AddWorkflow("review-workflow", (sp, key) =>
+//{
+//    var agents = new List<IHostedAgentBuilder>() { assistantBuilder, reviewerBuilder }.Select(ab => sp.GetRequiredKeyedService<AIAgent>(ab.Name));
+//    return AgentWorkflowBuilder.BuildSequential(workflowName: key, agents: agents);
+//}).AddAsAIAgent();
+
+// Register ChatClient for DevUI
+builder.Services.AddChatClient(sp =>
+{
+    return new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(apiKey))
+        .GetChatClient(chatModelId)
+        .AsIChatClient()
+            .AsBuilder()
+            .UseOpenTelemetry(sourceName: "OrderChatClient")
+            .Build();
+});
+
+// devui
+builder.Services.AddOpenAIResponses();
+builder.Services.AddOpenAIConversations();
 
 builder.AddServiceDefaults();
 
 var app = builder.Build();
 
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
+
+// Map OpenAI endpoints and DevUI (required for DevUI to work)
+app.MapOpenAIResponses();
+app.MapOpenAIConversations();
+
 if (app.Environment.IsDevelopment())
 {
     IdentityModelEventSource.ShowPII = true;
 
     app.MapOpenApi();
     app.MapScalarApiReference();
+
+    app.MapDevUI();  // This should automatically map /v1/entities endpoint
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
+if (!ignoreAuth)
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
 
-// Get the configured TaskManager for A2A endpoints
-using var scope = app.Services.CreateAsyncScope();
-var taskManager = scope.ServiceProvider.GetRequiredService<ITaskManager>();
+    // Note: Don't use 'using' here - the agent needs to live for the application lifetime
+    // The scope will be disposed when the application shuts down
+    var agent = app.Services.BuildAIAgentForAGUI(endpoint, apiKey, chatModelId);
 
-// Map A2A endpoints
-app.MapA2A(taskManager, "/").RequireAuthorization("CounterOnly");
-app.MapHttpA2A(taskManager, "/").RequireAuthorization("CounterOnly");
-app.MapWellKnownAgentCard(taskManager, "/").AllowAnonymous();
+    app.MapAGUI("/", agent);
+}
 
 app.MapDefaultEndpoints();
 
@@ -153,3 +157,4 @@ async Task CustomAuthenticationFailed(AuthenticationFailedContext context)
     // Custom logic upon authentication failure
     await Task.CompletedTask;
 }
+

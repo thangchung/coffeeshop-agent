@@ -51,25 +51,31 @@ namespace Microsoft.Extensions.Hosting
                 logging.IncludeScopes = true;
             });
 
+            // enable AI telemetry
+            AppContext.SetSwitch("OpenAI.Experimental.EnableOpenTelemetry", true);
+            AppContext.SetSwitch("Microsoft.SemanticKernel.Experimental.GenAI.EnableOTelDiagnosticsSensitive", true);
+            AppContext.SetSwitch("Azure.Experimental.EnableActivitySource", true);
+
             builder.Services.AddOpenTelemetry()
                 .WithMetrics(metrics =>
                 {
                     metrics.AddAspNetCoreInstrumentation()
                         .AddHttpClientInstrumentation()
-                        .AddRuntimeInstrumentation();
+                        .AddRuntimeInstrumentation()
+                        .AddMeter("*Microsoft.Agents.AI");
                 })
                 .WithTracing(tracing =>
                 {
                     tracing.AddSource(builder.Environment.ApplicationName)
-                        .AddSource("A2A.CounterAgent")
-                        .AddSource("A2A.BaristaAgent")
-                        .AddSource("A2A.KitchenAgent")
-                        .AddSource("A2A.TaskManager")
-                        .AddSource("A2A.Processor")
-                        .AddSource("Microsoft.SemanticKernel")
-                        .AddSource("Microsoft.SemanticKernel.Diagnostics")
-                        .AddSource("Experimental.ModelContextProtocol")
-                        //.AddSource("*")
+                        //.AddSource("A2A.CounterAgent")
+                        //.AddSource("A2A.BaristaAgent")
+                        //.AddSource("A2A.KitchenAgent")
+                        //.AddSource("A2A.TaskManager")
+                        //.AddSource("A2A.Processor")
+                        //.AddSource("*Microsoft.Extensions.AI")
+                        //.AddSource("*Microsoft.Extensions.Agents*")
+                        //.AddSource("Experimental.ModelContextProtocol")
+                       .AddSource("*")
                         .AddAspNetCoreInstrumentation(tracing =>
                             // Exclude health check requests from tracing
                             tracing.Filter = context =>

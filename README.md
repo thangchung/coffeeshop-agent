@@ -106,6 +106,27 @@ $Env:GEMINI_API_KEY = '<key>'; agentgateway -f .\agentgateway\config.yaml
 http://localhost:5000/.well-known/agent.json
 ```
 
+## MAF - Workflow
+
+```mermaid
+flowchart TD
+  ValidatorExecutor["ValidatorExecutor (Start)"];
+  SplitExecutor["SplitExecutor"];
+  HandleUncertainExecutor["HandleUncertainExecutor"];
+  BaristaExecuter["BaristaExecuter"];
+  KitchenExecuter["KitchenExecuter"];
+  AggregationExecutor["AggregationExecutor"];
+
+  fan_in::AggregationExecutor::76F793D9((fan-in))
+  BaristaExecuter --> fan_in::AggregationExecutor::76F793D9;
+  KitchenExecuter --> fan_in::AggregationExecutor::76F793D9;
+  fan_in::AggregationExecutor::76F793D9 --> AggregationExecutor;
+  ValidatorExecutor --> SplitExecutor;
+  ValidatorExecutor --> HandleUncertainExecutor;
+  SplitExecutor --> BaristaExecuter;
+  SplitExecutor --> KitchenExecuter;
+```
+
 ## TODO
 
 - [ ] Semantic Caching with Semantic Kernel: https://share.google/aimode/gxqpWpfekktrOidbr
