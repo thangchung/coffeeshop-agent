@@ -96,16 +96,16 @@ var app = builder.Build();
 
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
+// Map OpenAI endpoints and DevUI (required for DevUI to work)
+app.MapOpenAIResponses();
+app.MapOpenAIConversations();
+
 if (app.Environment.IsDevelopment())
 {
     IdentityModelEventSource.ShowPII = true;
 
     app.MapOpenApi();
     app.MapScalarApiReference();
-
-    // Map OpenAI endpoints and DevUI (required for DevUI to work)
-    //app.MapOpenAIResponses();
-    //app.MapOpenAIConversations();
 
     app.MapDevUI();  // This should automatically map /v1/entities endpoint
 }
