@@ -5,14 +5,13 @@ using System.Security.Claims;
 using Azure.AI.OpenAI;
 using CounterService.Agents;
 using CounterService.AuthZ;
+using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.DevUI;
-using Microsoft.Agents.AI.Hosting;
 using Microsoft.Agents.AI.Hosting.AGUI.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.AI;
 using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Logging;
-using OpenAI.Chat;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -73,17 +72,31 @@ if (!ignoreAuth)
     builder.Services.AddScoped<IAuthZService, StuffAuthZService>();
 }
 
-builder.AddWorkflow("order-workflow", (sp, key) =>
-{
-    using var scope = sp.CreateScope();
-    return scope.ServiceProvider.BuildWorkflowForDevUI(key, CancellationToken.None).GetAwaiter().GetResult();
-}).AddAsAIAgent();
+//// Note: in AppHost->Program.cs turns `var ignoreAuth = true;`
+//builder.AddWorkflow("order-workflow", (sp, key) =>
+//{
+//    using var scope = sp.CreateScope();
+//    return scope.ServiceProvider.BuildWorkflowForDevUI(key, CancellationToken.None).GetAwaiter().GetResult();
+//});
+
+// DEMO: devui
+//var assistantBuilder = builder.AddAIAgent("workflow-assistant", "You are a helpful assistant in a workflow.");
+//var reviewerBuilder = builder.AddAIAgent("workflow-reviewer", "You are a reviewer. Review and critique the previous response.");
+//builder.AddWorkflow("review-workflow", (sp, key) =>
+//{
+//    var agents = new List<IHostedAgentBuilder>() { assistantBuilder, reviewerBuilder }.Select(ab => sp.GetRequiredKeyedService<AIAgent>(ab.Name));
+//    return AgentWorkflowBuilder.BuildSequential(workflowName: key, agents: agents);
+//}).AddAsAIAgent();
 
 // Register ChatClient for DevUI
-builder.Services.AddSingleton<ChatClient>(sp =>
+builder.Services.AddChatClient(sp =>
 {
     return new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(apiKey))
-        .GetChatClient(chatModelId);
+        .GetChatClient(chatModelId)
+        .AsIChatClient()
+            .AsBuilder()
+            .UseOpenTelemetry(sourceName: "OrderChatClient")
+            .Build();
 });
 
 // devui

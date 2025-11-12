@@ -3,13 +3,13 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CounterService.Agents;
+using CounterService.Instructions;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using OpenAI;
-using OpenAI.Chat;
 
 namespace CounterService.Workflows;
 
@@ -64,7 +64,7 @@ public class ValidResponse
     public required bool Valid { get; set; } = false;
 }
 
-internal sealed class ValidatorExecutor(ChatClient chatClient, McpClient mcpClient) : Executor<string, ValidResponse>(nameof(ValidatorExecutor))
+internal sealed class ValidatorExecutor(IChatClient chatClient, McpClient mcpClient) : Executor<string, ValidResponse>(nameof(ValidatorExecutor))
 {
     public static readonly ActivitySource ActivitySource = new($"MAF.{nameof(ValidatorExecutor)}", "1.0.0");
 
@@ -72,22 +72,7 @@ internal sealed class ValidatorExecutor(ChatClient chatClient, McpClient mcpClie
     {
         using var activity = ActivitySource.StartActivity("HandleAsync", ActivityKind.Server);
 
-        var instructions = $$"""
-        You are a validator that checks if customer orders contain valid items.
-
-        Use your tool (GetItemTypes) to check if the customer order contains valid items from our inventory.
-
-        IMPORTANT: You must respond with ONLY valid JSON in this exact format. Do not include any additional text, explanations, or markdown formatting:
-
-           If any item is not valid: { "valid": false }
-           If all items are valid: { "valid": true }
-
-           Examples of CORRECT responses:
-              { "valid": true }
-              { "valid": false }
-
-           Do NOT respond with anything else. No explanations, no additional text, just the JSON object.
-        """;
+        var instructions = InstructionExtensions.GetInstruction("ValidationAgentInstruction");
 
         var mcpTools = await mcpClient.ListToolsAsync(cancellationToken: cancellationToken);
 
@@ -161,7 +146,7 @@ internal sealed class SplitExecutor(AIAgent agent) : Executor<ValidResponse>(nam
     }
 }
 
-internal sealed class BaristaExecuter(AIAgent agent) : Executor<BaristaOrderSplitted>(nameof(BaristaExecuter))
+internal sealed class BaristaExecutor(AIAgent agent) : Executor<BaristaOrderSplitted>(nameof(BaristaExecutor))
 {
     private readonly AIAgent _agent = agent;
 
@@ -172,7 +157,7 @@ internal sealed class BaristaExecuter(AIAgent agent) : Executor<BaristaOrderSpli
     }
 }
 
-internal sealed class KitchenExecuter(AIAgent agent) : Executor<KitchenOrderSplitted>(nameof(KitchenExecuter))
+internal sealed class KitchenExecutor(AIAgent agent) : Executor<KitchenOrderSplitted>(nameof(KitchenExecutor))
 {
     private readonly AIAgent _agent = agent;
 
