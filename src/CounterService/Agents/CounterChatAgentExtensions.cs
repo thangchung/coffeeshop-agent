@@ -283,5 +283,22 @@ public static class CounterChatAgentExtensions
         }
     }
 
+    /// <summary>
+    /// Retrieves the contents of a markdown instruction file with the specified name from the Agents directory.
+    /// </summary>
+    /// <param name="instructName">The name of the instruction file (without extension) to retrieve from the Agents directory.</param>
+    /// <returns>A string containing the full contents of the specified markdown instruction file.</returns>
+    /// <exception cref="DirectoryNotFoundException">Thrown if the Agents directory does not exist in the expected location.</exception>
+    internal static string GetInstruction(string instructName)
+    {
+        string solutionDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+        string instructFolder = Path.Combine(solutionDir, "Agents");
+
+        if (!Directory.Exists(instructFolder))
+            throw new DirectoryNotFoundException("Instructions folder not found.");
+
+        return File.ReadAllText(Path.Combine(instructFolder, $"{instructName}.md"));
+    }
+
     #endregion
 }
