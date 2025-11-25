@@ -7,17 +7,19 @@ namespace CounterService.Agents;
 
 public static class CounterChatAgentExtensions
 {
-    public static AIAgent BuildAIAgentForAGUI(this IServiceProvider sp, string endpoint, string apiKey, string chatModelId)
+    public static AIAgent BuildAIAgentForAGUI(this IServiceProvider sp)
     {
         var clientFactory = sp.GetRequiredService<IHttpClientFactory>();
         var logger = sp.GetRequiredService<ILogger<CounterChatAgent>>();
         var httpContextAccessor = sp.GetRequiredService<IHttpContextAccessor>();
         var configuration = sp.GetRequiredService<IConfiguration>();
-        var chatClient = new AzureOpenAIClient(
-                  new Uri(endpoint),
-                  new ApiKeyCredential(apiKey))
-                    .GetChatClient(chatModelId)
-                    .AsIChatClient();
+        var chatClient = sp.GetRequiredService<IChatClient>();
+
+        //var chatClient = new AzureOpenAIClient(
+        //          new Uri(endpoint),
+        //          new ApiKeyCredential(apiKey))
+        //            .GetChatClient(chatModelId)
+        //            .AsIChatClient();
 
         var agent = new CounterChatAgent(chatClient, configuration, clientFactory, httpContextAccessor, logger);
         return agent;

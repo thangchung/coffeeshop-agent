@@ -130,7 +130,7 @@ if (!ignoreAuth)
 
     // Note: Don't use 'using' here - the agent needs to live for the application lifetime
     // The scope will be disposed when the application shuts down
-    var agent = app.Services.BuildAIAgentForAGUI(endpoint, apiKey, chatModelId);
+    var agent = app.Services.BuildAIAgentForAGUI();
 
     app.MapAGUI("/", agent);
 }
