@@ -1,7 +1,7 @@
 # coffeeshop-agent
 .NET Agents technologies
 
-![](./assets/demo_coffeeshop.drawio.png)
+![](./assets/demo_coffeeshop.png)
 
 > This is a demonstration application. Certain scenarios presented may be unrealistic or not suitable for real-world use. Please do not replicate or deploy this in a production environment.
 
@@ -126,11 +126,6 @@ flowchart TD
   SplitExecutor --> BaristaExecuter;
   SplitExecutor --> KitchenExecuter;
 ```
-
-## TODO
-
-- [ ] Semantic Caching with Semantic Kernel: https://share.google/aimode/gxqpWpfekktrOidbr
-- [ ] Microsoft.Extensions.AI + Ollama: https://learn.microsoft.com/en-us/dotnet/ai/microsoft-extensions-ai#tool-calling
 
 ## References
 
